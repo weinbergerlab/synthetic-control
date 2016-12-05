@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+Rplots.pdf
+synthetic_control_webpage.html
+synthetic_control_webpage.Rmd
+shiny_app/downloads
+shiny_app/Rplots.pdf
+shiny_app/rsconnect
