@@ -7,5 +7,7 @@ The synthetic control applet is a resource-intensive process. To handle concurre
 ShinyApps.io: 
 
 https://weinbergerlab.shinyapps.io/synthetic_control/
+
 https://weinbergerlab.shinyapps.io/synthetic_control_1/
+
 https://weinbergerlab.shinyapps.io/synthetic_control_2/
