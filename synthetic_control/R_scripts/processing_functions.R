@@ -1,5 +1,7 @@
 library('date', quietly = TRUE)
 library('zoo', quietly = TRUE)
+library('lubridate', quietly = TRUE)
+library('CausalImpact', quietly = TRUE)
 
 formatDate <- function(time_points) {
 	time_points <- as.character(time_points)
@@ -91,7 +93,7 @@ inclusionProb <- function(age_group, impact) {
 	return(setNames(as.data.frame(colMeans(impact$model$bsts.model$coefficients != 0)), age_group))
 }
 
-rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period, offset = FALSE) {
+rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period, post_period, offset = FALSE) {
 	burn <- SuggestBurn(0.1, impact$model$bsts.model)
 	#Posteriors
 	state_samples <- rowSums(aperm(impact$model$bsts.model$state.contributions[-(1:burn),,, drop = FALSE], c(1, 3, 2)), dims = 2)
@@ -115,7 +117,16 @@ rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period
 	eval_rr_sum <- eval_obs/pred_eval_sum
 	rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
 	mean_rr <- mean(eval_rr_sum)
-	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, mean_rr = mean_rr)
+	
+	plot_rr_date_start <- post_period %m-% months(24)  
+	
+	roll_rr_indices <- match(plot_rr_date_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	obs_full <- exp(impact$series$response * sd + mean)
+	roll_sum_pred <- apply(pred_samples_post[roll_rr_indices, ], 2, rollsum, align = 'left', k = 12)
+	roll_sum_obs <- rollsum(obs_full[roll_rr_indices], align = 'left', k = 12)
+	roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
+	roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
 	return(quantiles)
 }
 

@@ -1,7 +1,13 @@
-#A version split between two files - the functions file and the analysis file.
-#This is the analysis file. 
+#This is the analysis file. The functions are cointained in synthetic_control_functions.R
+#There are six model variants: 
+# *_offset - Simple pre-post analysis using the specified variable (e.g., non-respiratory hospitalization or population size) as an offset term (denominator). This is Model 1 from the paper.
+# *_full - This is the full synthetic control model with all covariates.
+# *_noj - This is the synthetic control model with bronchitis/bronchiolitis removed.
+# *_ach - This is similar to _offset, but the specified variable is used as the sole covariate.
+# *_none - No covariate or offsest.
+# *_time - Trend adjustment with the same denominator as used in the _offset model.
 
-rm(list = ls(all = TRUE))
+rm(list = ls(all = TRUE)) #Clear workspace
 gc()
 
 #install.packages('devtools')
@@ -10,19 +16,35 @@ gc()
 
 library('parallel', quietly = TRUE)
 library('splines', quietly = TRUE)
+library('lubridate', quietly = TRUE)
 library('CausalImpact', quietly = TRUE)
 source('synthetic_control_functions.R')
 
+#Detects number of available cores on computers. Used for parallel processing to speed up analysis.
 n_cores <- detectCores()
 set.seed(1)
+par_defaults <- par(no.readonly = TRUE)
 
-#User-initialized constants.
-country <- 'SC_Subchapter_HDI'
+#############################
+#                           #
+#User-initialized constants.#
+#                           #
+#############################
+
+country <- 'Brazil'
 factor_name <- 'age_group'
 date_name <- 'date'
+n_seasons <- NULL #12 for monthly, 4 for quarterly, 3 for trimester data.
+do_weight_check <- FALSE
 
-#Load file
-input_directory <- paste('~/Desktop/Synthetic\ Controls\ Project/Data/', country, '/', sep = '')
+##################################################
+#                                                #
+#Directory setup and initialization of constants.#
+#                                                #
+##################################################
+
+#Load file (.csv format). You can change the input and output directories to point to an appropriate spot on your computer.
+input_directory <- paste('~/Documents/Synthetic Control Data/', country, '/', sep = '')
 output_directory <- paste(input_directory, 'results/', sep = '')
 dir.create(output_directory, showWarnings = FALSE)
 file_name <- paste('prelog', country, 'processed', 'data.csv', sep = '_')
@@ -31,6 +53,9 @@ ds1a <- read.csv(pcv_file)
 age_groups <- paste('Age Group', unique(unlist(ds1a$age_group, use.names = FALSE)))
 
 #Account for code-naming differences
+#all_cause_pneu_name - Gives the outcome variable (e.g. pneumonia) 
+#noj_name - gives the name of the bronchitis/bronchiolitis
+#all_cause_name - Gives the name of denominator used for some of the analyses. Can be population size, non-respiratory hospitalization, etc.
 SC_set <- c('SC1', 'SC2', 'SC3', 'SC_HDI', 'SC_HDI_Region', 'SC_National', 'SC_HDI_No_Pop', 'SC_HDI_Region_No_Pop', 'SC_National_No_Pop', 'SC_HDI_No_Pop_All', 'SC_HDI_Region_No_Pop_All', 'SC_National_No_Pop_All')
 SC_subchapter_set <- c('SC_Subchapter_HDI', 'SC_Subchapter_HDI_Region', 'SC_Subchapter_National')
 if (country %in% SC_set || country %in% SC_subchapter_set) {
@@ -48,6 +73,9 @@ if (country %in% SC_set || country %in% SC_subchapter_set) {
 }
 
 #Date variables
+#data_start_date gives training period start date.
+#intervention_date gives training period end date.
+#data_end_date gives end of data_set.
 if (country == 'Brazil') {
 	data_start_date <- as.Date('2004-01-01')
 } else {
@@ -67,8 +95,9 @@ if (country == 'Brazil' || country %in% SC_set) {
 	intervention_date <- as.Date('1999-12-31') 
 }
 data_end_date <- max(as.Date(ds1a[, date_name]))
-pre_period <- c(data_start_date, intervention_date)
-post_period <- c(intervention_date + 1, data_end_date)
+pre_period <- c(data_start_date, intervention_date) #Define training period
+post_period <- c(intervention_date + 1, data_end_date) #Define post-vaccine period.
+#Define evaluation period.
 if (country == 'Brazil' || country %in% SC_set || country %in% SC_subchapter_set) {
 	eval_period <- c(as.Date(ds1a[, date_name][nrow(ds1a) - 23]), as.Date(ds1a[, date_name][nrow(ds1a)]))
 } else if (country == 'Chile' || country == 'Ecuador') {
@@ -78,7 +107,25 @@ if (country == 'Brazil' || country %in% SC_set || country %in% SC_subchapter_set
 } else if (country == 'US') {
 	eval_period <- c(as.Date('2003-01-01'), as.Date('2004-12-01'))
 }
+
+#Seasons
+if (is.null(n_seasons)) {
+	if (country %in% SC_set || country %in% SC_subchapter_set) {
+		n_seasons <- 3
+	} else {
+		n_seasons <- 12
+	}	
+}
+
+#############################################
+#                                           #
+#Data and covariate preparation for analysis#
+#                                           #
+#############################################
+
 ds1a[, date_name] <- as.Date(ds1a[, date_name])
+
+#Log-transform all variables, adding 0.5 to counts of 0.
 ds <- setNames(lapply(unique(ds1a$age_group), FUN = logTransform, factor_name = factor_name, date_name = date_name, start_date = data_start_date, prelog_data = ds1a), age_groups)
 data_start <- match(data_start_date, ds[[1]][, date_name])
 time_points <- ds[[1]][, date_name][data_start:nrow(ds[[1]])]
@@ -90,13 +137,7 @@ ds <- lapply(ds, function(ds) {
 	return(ds)
 })
 
-#Seasons
-if (country %in% SC_set || country %in% SC_subchapter_set) {
-	n_seasons <- 3
-} else {
-	n_seasons <- 12
-}
-
+#Process and standardize the covariates. For the Brazil data, adjust for 2008 coding change.
 covars <- setNames(lapply(ds, FUN = function(ds_group) {
 	if (country == 'Brazil') {
 		#Eliminates effects from 2008 coding change
@@ -126,6 +167,7 @@ good_covars <- sapply(covars, FUN = function(covar) {noj_name %in% colnames(cova
 covars <- covars[good_covars]
 age_groups <- age_groups[good_covars]
 
+#Specifies covariates for the different model variates (if any).
 covars_noj  <- setNames(lapply(covars, FUN = function(covars) {
 	covars[, -grep(noj_name, colnames(covars))]
 }), age_groups)
@@ -139,6 +181,7 @@ covars_time <- setNames(lapply(covars, FUN = function(covars) {
 	as.data.frame(list(time_index = 1:nrow(covars)))
 }), age_groups)
 
+#Standardize the outcome variables and save the original mean and SD for later analysis.
 outcome <- sapply(ds, FUN = function(data) {scale(data[, all_cause_pneu_name])})
 outcome_mean <- sapply(ds, FUN = function(data) {mean(data[, all_cause_pneu_name])})
 outcome_sd <- sapply(ds, FUN = function(data) {sd(data[, all_cause_pneu_name])})
@@ -147,6 +190,7 @@ outcome_offset <- sapply(ds, FUN = function(data) {data[, all_cause_pneu_name] -
 outcome_offset_mean <- colMeans(outcome_offset)
 outcome_offset_sd <- sapply(ds, FUN = function(data) {sd(data[, all_cause_pneu_name] - data[, all_cause_name])})
 
+#Combine the outcome, covariates, and time point information.
 data_full   <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars,      time_points = time_points, scale_outcome = FALSE), age_groups)
 data_noj    <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars_noj,  time_points = time_points, scale_outcome = FALSE), age_groups)
 data_ach    <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars_ach,  time_points = time_points, scale_outcome = FALSE), age_groups)
@@ -154,7 +198,13 @@ data_none   <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,   
 data_time   <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome_offset, covars = covars_time, time_points = time_points, scale_outcome = TRUE ), age_groups)
 data_offset <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome_offset, covars = NULL,        time_points = time_points, scale_outcome = TRUE ), age_groups)
 
-#Start Cluster for CausalImpact
+###############################
+#                             #
+#        Main analysis        #
+#                             #
+###############################
+
+#Start Cluster for CausalImpact (the main analysis function).
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
 clusterExport(cl, c('ds', 'doCausalImpact', 'data_full', 'data_noj', 'data_ach', 'age_groups', 'intervention_date', 'time_points', 'n_seasons'))
@@ -168,6 +218,7 @@ impact_offset <- setNames(parLapply(cl, data_offset, doCausalImpact, interventio
 
 stopCluster(cl)
 
+#Save the synthetic control response data.
 dir.create(paste(output_directory, 'impact_responses/', sep = ''), showWarnings = FALSE)
 impact_list <- list('impact_full' = impact_full, 'impact_noj' = impact_noj, 'impact_ach' = impact_ach, 'impact_none' = impact_none, 'impact_time' = impact_time, 'impact_offset' = impact_offset)
 for (impact_set in names(impact_list)) {
@@ -180,13 +231,14 @@ for (impact_set in names(impact_list)) {
 }
 rm(impact_list)
 
+#Save the inclusion probabilities from each of the models.
 inclusion_prob_full <- setNames(mapply(inclusionProb, age_groups, impact_full, SIMPLIFY = FALSE), age_groups)
 inclusion_prob_noj  <- setNames(mapply(inclusionProb, age_groups, impact_noj,  SIMPLIFY = FALSE), age_groups)
 inclusion_prob_ach  <- setNames(mapply(inclusionProb, age_groups, impact_ach,  SIMPLIFY = FALSE), age_groups)
 inclusion_prob_none <- setNames(mapply(inclusionProb, age_groups, impact_none, SIMPLIFY = FALSE), age_groups)
 inclusion_prob_time <- setNames(mapply(inclusionProb, age_groups, impact_time, SIMPLIFY = FALSE), age_groups)
 
-#Model results
+#All model results combined
 quantiles_full   <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_full[[age_group]],   all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)}), age_groups)
 quantiles_noj    <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_noj[[age_group]],    all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)}), age_groups)
 quantiles_ach    <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_ach[[age_group]],    all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)}), age_groups)
@@ -194,6 +246,7 @@ quantiles_none   <- setNames(lapply(age_groups, FUN = function(age_group) {rrPre
 quantiles_time   <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_time[[age_group]],   all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)}), age_groups)
 quantiles_offset <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_offset[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_offset_mean[age_group], sd = outcome_offset_sd[age_group], eval_period = eval_period, offset = TRUE)}), age_groups)
 
+#Model predicitons
 pred_quantiles_full   <- sapply(quantiles_full,   getPred, simplify = 'array')
 pred_quantiles_noj    <- sapply(quantiles_noj,    getPred, simplify = 'array')
 pred_quantiles_ach    <- sapply(quantiles_ach,    getPred, simplify = 'array')
@@ -201,6 +254,11 @@ pred_quantiles_none   <- sapply(quantiles_none,   getPred, simplify = 'array')
 pred_quantiles_time   <- sapply(quantiles_time,   getPred, simplify = 'array')
 pred_quantiles_offset <- sapply(quantiles_offset, getPred, simplify = 'array')
 
+#Rolling rate ratios
+rr_roll_full <- sapply(quantiles_full, FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array')
+rr_roll_time <- sapply(quantiles_time, FUN = function(quantiles_time) {quantiles_time$roll_rr}, simplify = 'array')
+
+#Rate ratios for evaluation period.
 rr_mean_full   <- t(sapply(quantiles_full,   getRR))
 rr_mean_noj    <- t(sapply(quantiles_noj,    getRR))
 rr_mean_ach    <- t(sapply(quantiles_ach,    getRR))
@@ -217,12 +275,15 @@ colnames(rr_mean_none)   <- rr_col_names
 colnames(rr_mean_time)   <- rr_col_names
 colnames(rr_mean_offset) <- rr_col_names
 
-write.csv(rr_mean_full,   paste(output_directory, country, '_rr_full.csv', sep = ''))
-write.csv(rr_mean_noj,    paste(output_directory, country, '_rr_noj.csv', sep = ''))
-write.csv(rr_mean_ach,    paste(output_directory, country, '_rr_ach.csv', sep = ''))
-write.csv(rr_mean_none,   paste(output_directory, country, '_rr_no_covars.csv', sep = ''))
-write.csv(rr_mean_time,   paste(output_directory, country, '_rr_time_trend.csv', sep = ''))
-write.csv(rr_mean_offset, paste(output_directory, country, '_rr_offset.csv', sep = ''))
+#Output the rate ratio estimates to a new file.
+write.csv(rr_mean_full,   paste(output_directory, country, '_rr_full.csv', sep = ''), row.names = FALSE)
+write.csv(rr_mean_noj,    paste(output_directory, country, '_rr_noj.csv', sep = ''), row.names = FALSE)
+write.csv(rr_mean_ach,    paste(output_directory, country, '_rr_ach.csv', sep = ''), row.names = FALSE)
+write.csv(rr_mean_none,   paste(output_directory, country, '_rr_no_covars.csv', sep = ''), row.names = FALSE)
+write.csv(rr_mean_time,   paste(output_directory, country, '_rr_time_trend.csv', sep = ''), row.names = FALSE)
+write.csv(rr_mean_offset, paste(output_directory, country, '_rr_offset.csv', sep = ''), row.names = FALSE)
+write.csv(rr_roll_full,   paste(output_directory, country, '_rr_roll_full.csv', sep = ''), row.names = FALSE)
+write.csv(rr_roll_time,   paste(output_directory, country, '_rr_roll_time.csv', sep = ''), row.names = FALSE)
 
 plot_cumsum_prevented <- sapply(age_groups, FUN = function(age_group, quantiles) {
 	pred_samples_post_full <- quantiles[[age_group]]$pred_samples_post_full
@@ -248,11 +309,18 @@ for (age_group in age_groups) {
 }
 write.csv(pred_full, paste(output_directory, country, '_pred_mult_full.csv', sep = ''), row.names = FALSE)
 
+##################################
+#                                #
+#    Visualization of results    #
+#                                #
+##################################
+
 #Plot covars, models, and impacts
-par_defaults <- par(no.readonly = TRUE)
+par(par_defaults)
 invisible(lapply(age_groups, FUN = function(age_group) {
 	#View scaled covariates
 	matplot(covars[[age_group]], type = 'l')
+	title(main = age_group, sub = 'Cumulative cases prevented')
 	
 	#View cumulative sums
 	matplot(plot_cumsum_prevented[, , age_group], type='l')
@@ -261,11 +329,28 @@ invisible(lapply(age_groups, FUN = function(age_group) {
 	#Plot predictions
 	par(mfrow = c(3, 1))
 	plotPred(age_group, pred_quantiles_full[, , age_group])
-	plotPred(age_group, pred_quantiles_noj[, , age_group])
-	plotPred(age_group, pred_quantiles_ach[, , age_group])
-	plotPred(age_group, pred_quantiles_none[, , age_group])
+	title(main = paste(age_group, 'Synthetic controls estimate'))
+	#plotPred(age_group, pred_quantiles_noj[, , age_group])
+	#plotPred(age_group, pred_quantiles_ach[, , age_group])
+	#plotPred(age_group, pred_quantiles_none[, , age_group])
 	plotPred(age_group, pred_quantiles_time[, , age_group])
+	title(main = paste(age_group, 'Interupted time series estimate'))
 	par(par_defaults)
+	
+	#Rolling rate ratio
+	par(mfrow = c(2, 1))
+	matplot(rr_roll_full[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l')
+	title(main = paste(age_group, 'Synthetic controls: rolling rate ratio'))
+	abline(h = 1, lty = 2)
+	matplot(rr_roll_time[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l')
+	title(main = paste(age_group, 'Interupted time series: rolling rate ratio'))
+	abline(h = 1, lty = 2)
+	par(par_defaults)
+	
+	#View cumulative sums
+	matplot(plot_cumsum_prevented[, , age_group], type = 'l', col = 'black')
+	abline(h = 0, lty = 2)
+	title(main = age_group, sub = 'Cumulative cases prevented')
 	return()
 }))
 
@@ -296,12 +381,18 @@ post_prob_noj <- postProbHeatmap(inclusion_prob_noj)
 write.csv(post_prob_full, paste(output_directory, country, '_post_prob_full.csv', sep = ''))
 write.csv(post_prob_noj, paste(output_directory, country, '_post_prob_noj.csv', sep = ''))
 
+################################
+#                              #
+#     Sensitivity Analyses     #
+#                              #
+################################
+
 #Start Cluster for Sensitivity Analysis
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
 clusterExport(cl, c('ds', 'doCausalImpact', 'sensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons'))
 
-#Sensitivity Analysis
+#Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
 sensitivity_analysis_full <- setNames(parLapply(cl, age_groups, sensitivityAnalysis, covars = covars, impact = impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons), age_groups)
 sensitivity_analysis_noj <- setNames(parLapply(cl, age_groups, sensitivityAnalysis, covars = covars_noj, impact = impact_noj, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons), age_groups)
 
@@ -329,48 +420,50 @@ colnames(rr_mean_sensitivity_analysis_1_noj)  <- rr_col_names
 write.csv(rr_mean_sensitivity_analysis_1_full, paste(output_directory, country, '_rr_sensitivity_analysis_1_full.csv', sep = ''))
 write.csv(rr_mean_sensitivity_analysis_1_noj,  paste(output_directory, country, '_rr_sensitivity_analysis_1_noj.csv', sep = ''))
 
-#Table of Rate Ratios for each Analysis Level
+#Table of rate ratios for each sensitivity analysis level
 rr_table_full <- t(sapply(age_groups, rrTable, impact = impact_full, sensitivity_analysis = sensitivity_analysis_full, eval_period = eval_period))
 rr_table_noj <- t(sapply(age_groups, rrTable, impact = impact_noj, sensitivity_analysis = sensitivity_analysis_noj, eval_period = eval_period))
 write.csv(rr_table_full, paste(output_directory, country, '_rr_table_full.csv', sep = ''))
 write.csv(rr_table_noj,  paste(output_directory, country, '_rr_table_noj.csv',  sep = ''))
 
 #Weight Checker - counts how often a covariate appears with an inclusion probability above 5% of that of the covariate with the greatest inclusion probability.
-all_vars <- unique(c(colnames(ds1a), unlist(sapply(covars, colnames))))
-weight_checker <- rep(0, length = length(all_vars) - 2)
-names(weight_checker) <- all_vars[3:length(all_vars)]
-for (iteration in 1:10) {
-	print(paste('Iteration', iteration, 'of', 10))
-	invisible(lapply(age_groups, FUN = function(age_group) {
-		par(mar = c(5, 4, 1, 2) + 0.1)
-		covar_df <- covars[[age_group]]
-		df <- ds[[age_group]]
-		
-		incl_prob <- plot(impact_full[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
-		max_var <- names(incl_prob[length(incl_prob)])
-		
-		weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
-																							 ifelse(incl_prob[names(weight_checker)] >= 0.05*max(incl_prob), 1, 0))
-		
-		for (i in 1:3) {
-			df <- df[, names(df) != max_var]
-			covar_df <- covar_df[, names(covar_df) != max_var]
+if (do_weight_check) {
+	all_vars <- unique(c(colnames(ds1a), unlist(sapply(covars, colnames))))
+	weight_checker <- rep(0, length = length(all_vars) - 2)
+	names(weight_checker) <- all_vars[3:length(all_vars)]
+	for (iteration in 1:10) {
+		print(paste('Iteration', iteration, 'of', 10))
+		invisible(lapply(age_groups, FUN = function(age_group) {
+			par(mar = c(5, 4, 1, 2) + 0.1)
+			covar_df <- covars[[age_group]]
+			df <- ds[[age_group]]
 			
-			#Combine covars, outcome, date
-			data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
-			impact <- doCausalImpact(data, intervention_date, time_points, n_seasons)
-			
-			incl_prob <- plot(impact$model$bsts.model, 'coefficients', cex.names = 0.5, main = paste(age_group, 'Analysis', i))$inclusion.prob
+			incl_prob <- plot(impact_full[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
 			max_var <- names(incl_prob[length(incl_prob)])
 			
-			#For weight checking: 
 			weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
-																								 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
-		}
-		return()
-	}))
-}
+																								 ifelse(incl_prob[names(weight_checker)] >= 0.05*max(incl_prob), 1, 0))
+			
+			for (i in 1:3) {
+				df <- df[, names(df) != max_var]
+				covar_df <- covar_df[, names(covar_df) != max_var]
+				
+				#Combine covars, outcome, date
+				data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
+				impact <- doCausalImpact(data, intervention_date, time_points, n_seasons)
+				
+				incl_prob <- plot(impact$model$bsts.model, 'coefficients', cex.names = 0.5, main = paste(age_group, 'Analysis', i))$inclusion.prob
+				max_var <- names(incl_prob[length(incl_prob)])
+				
+				#For weight checking: 
+				weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
+																									 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
+			}
+			return()
+		}))
+	}
 
-barplot(weight_checker[order(weight_checker, decreasing = TRUE)], las = 2)
-weight_check_table <- matrix(weight_checker[order(weight_checker, decreasing = TRUE)], dimnames = list(names(weight_checker)[order(weight_checker, decreasing = TRUE)], c('Counts')))
-weight_check_table
+	barplot(weight_checker[order(weight_checker, decreasing = TRUE)], las = 2)
+	weight_check_table <- matrix(weight_checker[order(weight_checker, decreasing = TRUE)], dimnames = list(names(weight_checker)[order(weight_checker, decreasing = TRUE)], c('Counts')))
+	weight_check_table
+}

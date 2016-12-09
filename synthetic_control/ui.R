@@ -38,7 +38,7 @@ shinyUI(fluidPage(
 		), 
 		selectInput(
 			inputId = 'variable', 
-			label = 'Select variable column.',
+			label = 'Select outcome variable.',
 			choices = NULL, 
 			selected = NULL,
 			selectize = TRUE
@@ -56,14 +56,14 @@ shinyUI(fluidPage(
 			selectize = TRUE, 
 			multiple = TRUE
 		),
-		sliderInput(
-			inputId = 'loess_slidebar',
-			label = 'Loess smoothing (0 for none, 1 for full).',
-			min = 0, 
-			max = 1, 
-			value = 0, 
-			step = 0.01
-		),
+		#sliderInput(
+		#	inputId = 'loess_slidebar',
+		#	label = 'Loess smoothing (0 for none, 1 for full).',
+		#	min = 0, 
+		#	max = 1, 
+		#	value = 0, 
+		#	step = 0.01
+		#),
 		checkboxInput(
 			inputId = 'adjust_covariates_checkbox',
 			label = 'Adjust for year 2008 coding change.',

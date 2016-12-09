@@ -1,6 +1,6 @@
-#A version split between two files - the function file and the analysis file.
-#This is the function file. 
+#This is the function file. It is called directly from the analysis file.
 
+#Log-transform the data.
 logTransform <- function(factor_name, factor_value, date_name, start_date, prelog_data) {
 	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
@@ -10,6 +10,7 @@ logTransform <- function(factor_name, factor_value, date_name, start_date, prelo
 	return(ds)
 }
 
+#Used to adjust the Brazil data for a code shift in 2008.
 getTrend <- function(covar_vector, data) {
 	new_data <- data
 	new_data[c('bs1', 'bs2', 'bs3', 'bs4')] <- 0
@@ -19,6 +20,7 @@ getTrend <- function(covar_vector, data) {
 	return(trend)
 }
 
+#Combine the outcome and covariates.
 makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcome) {
 	if (scale_outcome) {
 		ts <- zoo(cbind(outcome = scale(outcome[, age_group]), covars[[age_group]]), time_points)
@@ -28,6 +30,7 @@ makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcom
 	return(ts)
 }
 
+#Main analysis function.
 doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, trend = FALSE, offset = FALSE) {
 	n_iter = 2000
 	
@@ -61,10 +64,12 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, 
 	CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
 }
 
+#Save inclusion probabilities.
 inclusionProb <- function(age_group, impact) {
 	return(setNames(as.data.frame(colMeans(impact$model$bsts.model$coefficients != 0)), age_group))
 }
 
+#Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 rrPredQuantiles <- function(impact, all_cause_data, mean, sd, eval_period, offset = FALSE) {
 	burn <- SuggestBurn(0.1, impact$model$bsts.model)
 	#Posteriors
@@ -80,6 +85,7 @@ rrPredQuantiles <- function(impact, all_cause_data, mean, sd, eval_period, offse
 	}
 	plot_pred <- t(apply(pred_samples_post, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
 	eval_indices <- match(eval_period[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	
 	pred_eval_sum <- colSums(pred_samples_post[eval_indices, ])
 	if (offset) {
 		eval_obs <- sum((exp(all_cause_data) * exp(impact$series$response * sd + mean))[eval_indices])
@@ -89,7 +95,17 @@ rrPredQuantiles <- function(impact, all_cause_data, mean, sd, eval_period, offse
 	eval_rr_sum <- eval_obs/pred_eval_sum
 	rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
 	mean_rr <- mean(eval_rr_sum)
-	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, mean_rr = mean_rr)
+	
+	plot_rr_date_start <- post_period %m-% months(24)  
+	
+	roll_rr_indices <- match(plot_rr_date_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	obs_full <- exp(impact$series$response * sd + mean)
+	roll_sum_pred <- apply(pred_samples_post[roll_rr_indices, ], 2, rollsum, align = 'left', k = 12)
+	roll_sum_obs <- rollsum(obs_full[roll_rr_indices], align = 'left', k = 12)
+	roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
+	roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+
+	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
 	return(quantiles)
 }
 
@@ -101,6 +117,7 @@ getRR <- function(quantiles) {
 	return(quantiles$rr)
 }
 
+#Plot predictions.
 plotPred <- function(age_group, data) {
 	post_period_start <- which(time_points == post_period[1]) 
 	post_period_end <- which(time_points == post_period[2])
@@ -123,6 +140,7 @@ plotModel <- function(model) {
 	abline(h = 0)
 }
 
+#Saves the posterior probabilities
 postProbHeatmap <- function(data) {
 	post_prob <- Reduce(function(a, b) {
 		ans <- merge(a, b, by = 'row.names', all = TRUE)
@@ -135,6 +153,7 @@ postProbHeatmap <- function(data) {
 	return(post_prob)
 }
 
+#Sensitivity analysis by dropping the top weighted covariates. 
 sensitivityAnalysis <- function(age_group, covars, impact, time_points, intervention_date, n_seasons) {
 	par(mar = c(5, 4, 1, 2) + 0.1)
 	covar_df <- covars[[age_group]]

@@ -160,10 +160,10 @@ shinyServer(function(input, output, session) {
 				} else {
 					covars <- ds[[age_group]][, good_covars, drop = FALSE]
 				}
-				if (locked_input()$loess_slidebar != 0) {
-					span <- locked_input()$loess_slidebar
-					covars <- as.data.frame(sapply(covars, FUN = function(covar) {predict(loess(covar~seq(nrow(covars)), span = span))}))
-				}
+				#if (locked_input()$loess_slidebar != 0) {
+				#	span <- locked_input()$loess_slidebar
+				#	covars <- as.data.frame(sapply(covars, FUN = function(covar) {predict(loess(covar~seq(nrow(covars)), span = span))}))
+				#}
 				covars <- as.data.frame(lapply(covars[, apply(covars, 2, var) != 0, drop = FALSE], scale))
 				return(covars)
 			}), age_groups)
@@ -332,19 +332,22 @@ shinyServer(function(input, output, session) {
 	})
 	
 	#Model results
-	quantiles_full <- eventReactive(impact_full(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range)}), age_groups())})
-	quantiles_none <- eventReactive(impact_none(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_none()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range)}), age_groups())})
-	quantiles_time <- eventReactive(impact_time(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range)}), age_groups())})
-	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, offset = TRUE)}), age_groups())})
+	quantiles_full   <- eventReactive(impact_full(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
+	quantiles_none   <- eventReactive(impact_none(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_none()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
+	quantiles_time   <- eventReactive(impact_time(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
+	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()), offset = TRUE)}), age_groups())})
 	
-	pred_quantiles_full <- eventReactive(quantiles_full(), {sapply(quantiles_full(), getPred, simplify = 'array')})
-	pred_quantiles_none <- eventReactive(quantiles_none(), {sapply(quantiles_none(), getPred, simplify = 'array')})
-	pred_quantiles_time <- eventReactive(quantiles_time(), {sapply(quantiles_time(), getPred, simplify = 'array')})
+	pred_quantiles_full   <- eventReactive(quantiles_full(),   {sapply(quantiles_full(),   getPred, simplify = 'array')})
+	pred_quantiles_none   <- eventReactive(quantiles_none(),   {sapply(quantiles_none(),   getPred, simplify = 'array')})
+	pred_quantiles_time   <- eventReactive(quantiles_time(),   {sapply(quantiles_time(),   getPred, simplify = 'array')})
 	pred_quantiles_offset <- eventReactive(quantiles_offset(), {sapply(quantiles_offset(), getPred, simplify = 'array')})
 	
-	rr_mean_full <- eventReactive(quantiles_full(), {t(sapply(quantiles_full(), getRR))})
-	rr_mean_none <- eventReactive(quantiles_none(), {t(sapply(quantiles_none(), getRR))})
-	rr_mean_time <- eventReactive(quantiles_time(), {t(sapply(quantiles_time(), getRR))})
+	rr_roll_full <- eventReactive(quantiles_full(), sapply(quantiles_full(), FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array'))
+	rr_roll_time <- eventReactive(quantiles_time(), sapply(quantiles_time(), FUN = function(quantiles_time) {quantiles_time$roll_rr}, simplify = 'array'))
+	
+	rr_mean_full   <- eventReactive(quantiles_full(),   {t(sapply(quantiles_full(),   getRR))})
+	rr_mean_none   <- eventReactive(quantiles_none(),   {t(sapply(quantiles_none(),   getRR))})
+	rr_mean_time   <- eventReactive(quantiles_time(),   {t(sapply(quantiles_time(),   getRR))})
 	rr_mean_offset <- eventReactive(quantiles_offset(), {t(sapply(quantiles_offset(), getRR))})
 	
 	#Cumulative sum of prevented cases
@@ -402,10 +405,10 @@ shinyServer(function(input, output, session) {
 		outcome_mean <- isolate(outcome_mean())
 		outcome_sd <- isolate(outcome_sd())
 		sapply(age_groups, FUN = function(age_group) {
-			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range)
+			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
 			cred_int <- c('Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
 			cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range)
+				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
 				cred_int <- c(round(rr_pred_quantile$mean_rr, 4), paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
 				names(cred_int) <- c(paste('Analysis', i), paste('Analysis', i, '.95'))
 				return(cred_int)
@@ -444,6 +447,8 @@ shinyServer(function(input, output, session) {
 				renderPlot(plotPred(data = pred_quantiles_none()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'No Covariate Impact Plot')),
 				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Time Trend Impact Plot')),
 				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Offset Impact Plot')),
+				renderPlot(matplot(rr_roll_full()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Synthetic controls: rolling rate ratio'))),
+				renderPlot(matplot(rr_roll_time()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Interupted time series: rolling rate ratio'))),
 				renderPlot(plot(impact_full()[[age_group]]$model$bsts.model, 'coefficients', main = age_group)),
 				renderPlot(plot(zoo(covars[[age_group]][, rownames(inclusion_prob[[age_group]])[2:length(rownames(inclusion_prob[[age_group]]))]], dates), plot.type = 'single', type = 'l', main = 'Selected Covariates', xlab = 'Time', ylab = 'Scaled Values', col = rgb(0, 0, 0, alpha = unlist(inclusion_prob[[age_group]][2:length(rownames(inclusion_prob[[age_group]])),])))), #col = rainbow(ncol(covars[[age_group]]))
 				renderText(covar_warning()[[age_group]])
