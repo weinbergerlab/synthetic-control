@@ -2,6 +2,7 @@
 
 #Log-transform the data.
 logTransform <- function(factor_name, factor_value, date_name, start_date, prelog_data) {
+	print(factor_value)
 	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
 	ds <- ds[match(start_date, ds[, date_name]):nrow(ds), ]
@@ -33,22 +34,22 @@ makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcom
 #Main analysis function.
 doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, trend = FALSE, offset = FALSE) {
 	n_iter = 2000
-	
+
 	y <- zoo_data[, 1]
 	y[time_points >= as.Date(intervention_date)] <- NA
 	sd_limit <- sd(y)
 	sd <- sd(y, na.rm = TRUE)
 	mean <- mean(y, na.rm = TRUE)
-	
+
 	post_period_response <- zoo_data[, 1]
 	post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
-	
+
 	sigma_prior_guess <- 1e-6
 	prior_sample_size <- 1e6
 	ss <- NA
 	ss <- AddSeasonal(list(), y, nseasons = n_seasons, sigma.prior = SdPrior(sigma.guess = sigma_prior_guess, sample.size = prior_sample_size, upper.limit = sd_limit))
 	ss <- AddLocalLevel(ss, y, sigma.prior = SdPrior(sigma.guess = sigma_prior_guess, sample.size = prior_sample_size, upper.limit = sd_limit), initial.state.prior = NormalPrior(mean, sd))
-	
+
 	if (offset) {
 		bsts_model <- bsts(y, state.specification = ss, niter = n_iter, ping = 0, seed = 1)
 	} else if (trend){
@@ -59,7 +60,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, 
 		regression_prior_df <- 50
 		exp_r2 <- 0.8
 		n_pred <- max(ncol(x) / 2, 1)
-		bsts_model <- bsts(y~., data = x, state.specification = ss, niter = n_iter, expected.model.size = n_pred, prior.df = regression_prior_df, expected.r2 = exp_r2, ping = 0, seed = 1)	
+		bsts_model <- bsts(y~., data = x, state.specification = ss, niter = n_iter, expected.model.size = n_pred, prior.df = regression_prior_df, expected.r2 = exp_r2, ping = 0, seed = 1)
 	}
 	CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
 }
@@ -122,21 +123,23 @@ plotPred <- function(age_group, data) {
 	post_period_start <- which(time_points == post_period[1]) 
 	post_period_end <- which(time_points == post_period[2])
 	
-	min_plot<-min(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
-	max_plot<-max(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
+	#min_plot <- min(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
+	#max_plot <- max(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
+	min_plot <- min(c(pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
+	max_plot <- max(c(pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
 	xx <- c(time_points[post_period_start:post_period_end], rev(time_points[post_period_start:post_period_end]))
 	ci_poly <- c(data[post_period_start:post_period_end, 1], rev(data[post_period_start:post_period_end, 3]))
-	plot(time_points, data[,2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot))
+	plot(time_points, data[, 2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot))
 	polygon(xx, ci_poly, lty = 0, col = 'lightgray')
-	points(time_points, data[,2], type = 'l', col = 'white', lty = 2)
+	points(time_points, data[, 2], type = 'l', col = 'white', lty = 2)
 	points(time_points, outcome_plot[, age_group], type = 'l', col = 'black', lwd = 2)
 	if (country == 'Brazil') {abline(v = as.Date('2008-01-01'), lty = 2)}
 	abline(v = as.Date('2012-05-01'), lty = 2, col = 'lightgray') #pcv13
 }
 
 plotModel <- function(model) {
-	plot(1:length(age_groups), model[1:length(age_groups), 'rr_median'], bty = 'l', ylim = c(min(min_max), max(min_max)))
-	arrows(1:length(age_groups), model[1:length(age_groups), 'rr_lcl'], 1:length(age_groups), model[, 'rr_ucl'], code = 3, angle = 90, length = 0.0)
+	plot(1:length(age_groups), model[1:length(age_groups), 'Point Estimate'], bty = 'l', ylim = c(min(min_max), max(min_max)))
+	arrows(1:length(age_groups), model[1:length(age_groups), 'Lower CI'], 1:length(age_groups), model[, 'Upper CI'], code = 3, angle = 90, length = 0.0)
 	abline(h = 0)
 }
 
@@ -161,6 +164,7 @@ sensitivityAnalysis <- function(age_group, covars, impact, time_points, interven
 	
 	incl_prob <- plot(impact[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
 	max_var <- names(incl_prob[length(incl_prob)])
+	max_prob <- incl_prob[length(incl_prob)]
 	
 	sensitivity_analysis <- vector('list', 3)
 	
@@ -171,10 +175,11 @@ sensitivityAnalysis <- function(age_group, covars, impact, time_points, interven
 		#Combine covars, outcome, date
 		zoo_data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
 		
-		sensitivity_analysis[[i]] <- list(removed_var = max_var, impact = doCausalImpact(zoo_data, intervention_date, time_points, n_seasons))
+		sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob, impact = doCausalImpact(zoo_data, intervention_date, time_points, n_seasons))
 		
 		incl_prob <- plot(sensitivity_analysis[[i]]$impact$model$bsts.model, 'coefficients', cex.names = 0.5, main = paste(age_group, 'Analysis', i))$inclusion.prob
 		max_var <- names(incl_prob[length(incl_prob)])
+		max_prob <- incl_prob[length(incl_prob)]
 	}
 	return(sensitivity_analysis)
 }
@@ -189,4 +194,26 @@ rrTable <- function(age_group, impact, sensitivity_analysis, eval_period) {
 		return(cred_int)
 	})
 	c(cred_int, cred_int_analyses, recursive = TRUE)
+}
+
+rrTable2 <- function(age_group, impact, sensitivity_analysis, eval_period) {
+	rr_pred_quantile <- rrPredQuantiles(impact = impact[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)
+	cred_int <- c(rr_pred_quantile$rr[1], rr_pred_quantile$rr[2], rr_pred_quantile$rr[3])
+	names(cred_int) <- paste('SC', rr_col_names)
+	cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
+		top_control <- c(sensitivity_analysis[[age_group]][[i]]$removed_var, sensitivity_analysis[[age_group]][[i]]$removed_prob)
+		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i))
+		return(top_control)
+	})
+	#return(c(cred_int, cred_int_analyses, recursive = TRUE))
+	return(cred_int)
+}
+
+sensitivityTable <- function(age_group, sensitivity_analysis) {
+	top_controls <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
+		top_control <- c(sensitivity_analysis[[age_group]][[i]]$removed_var, sensitivity_analysis[[age_group]][[i]]$removed_prob)
+		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i))
+		return(top_control)
+	})
+	return(c(top_controls, recursive = TRUE))
 }

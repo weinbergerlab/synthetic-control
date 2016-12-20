@@ -1,0 +1,58 @@
+---
+title: "Synthetic Controls"
+date: 'Report generated `r format(Sys.time(), "%A, %B %d, %Y")`'
+knit: (function(inputFile, encoding) { 
+      out_dir <- paste(paste('~/Documents/Synthetic Control Data/SC_Dec/', 'Brazil', '/', sep = ''), 'results', sep = '');
+      rmarkdown::render(inputFile,
+                        encoding=encoding, 
+                        output_file=file.path(out_dir, 'analysis.html')) })
+output:
+ html_document:
+  toc: TRUE
+  toc_float: TRUE
+---
+
+```{r setup, include = FALSE}
+library('parallel', quietly = TRUE)
+library('splines', quietly = TRUE)
+library('lubridate', quietly = TRUE)
+library('CausalImpact', quietly = TRUE)
+library('zoo', quietly = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r analysis, include = FALSE}
+source('~/GitHub/synthetic-control/synthetic_control_analysis.R')
+```
+
+#`r country` Results
+
+##ITS
+```{r ITS}
+knitr::kable(rr_mean_time)
+```
+
+##Synthetic Controls
+```{r SC}
+knitr::kable(rr_mean_full)
+```
+
+##Sensitivity Analysis
+```{r sensitivity}
+knitr::kable(sensitivity_table, align = 'c')
+```
+
+##Plots
+
+```{r plots, results = 'asis'}
+plot_data_full <- read.csv(paste(output_directory, 'impact_responses/', country, '_impact_full', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
+plot_data_time <- read.csv(paste(output_directory, 'impact_responses/', country, '_impact_time', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
+for (group in names(impact_full)) {
+	cat('###', group, '\n', sep = '')
+	plot(zoo(cbind('Response' = plot_data_full[plot_data_full$group_factor == group, 'point.pred'], 'Outcome' = outcome[, group]), as.Date(plot_data_full[plot_data_full$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('SC and Outcome for', group), plot.type = 'single', col = 3:4)
+	legend(x = "topleft", bty = "n", lty = c(1,1), col = 3:4, legend = c('SC', 'Pneumo'))
+	plot(zoo(cbind(plot_data_time[plot_data_time$group_factor == group, 'point.pred'], outcome[, group]), as.Date(plot_data_time[plot_data_time$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('ITS and Outcome for', group), plot.type = 'single', col = 5:4)
+	legend(x = "topleft", bty = "n", lty = c(1,1), col = 5:4, legend = c('ITS', 'Pneumo'))
+	cat('\n\n')
+}
+```
