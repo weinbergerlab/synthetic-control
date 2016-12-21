@@ -2,7 +2,6 @@
 
 #Log-transform the data.
 logTransform <- function(factor_name, factor_value, date_name, start_date, prelog_data) {
-	print(factor_value)
 	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
 	ds <- ds[match(start_date, ds[, date_name]):nrow(ds), ]

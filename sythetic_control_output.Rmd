@@ -2,7 +2,7 @@
 title: "Synthetic Controls"
 date: 'Report generated `r format(Sys.time(), "%A, %B %d, %Y")`'
 knit: (function(inputFile, encoding) { 
-      out_dir <- paste(paste('~/Documents/Synthetic Control Data/SC_Dec/', 'Brazil', '/', sep = ''), 'results', sep = '');
+      out_dir <- paste(paste('~/Documents/Synthetic Control Data/SC_Dec/', 'SC_Dec_Coverage groups', '/', sep = ''), 'results', sep = '');
       rmarkdown::render(inputFile,
                         encoding=encoding, 
                         output_file=file.path(out_dir, 'analysis.html')) })

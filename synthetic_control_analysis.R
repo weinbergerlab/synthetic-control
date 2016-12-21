@@ -31,12 +31,12 @@ par_defaults <- par(no.readonly = TRUE)
 #                           #
 #############################
 
-country <- 'Brazil'
+country <- 'SC_Dec_Coverage groups'
 factor_name <- 'age_group'
 date_name <- 'date'
 n_seasons <- NULL #12 for monthly, 4 for quarterly, 3 for trimester data.
 do_weight_check <- FALSE
-exclude_from_covars <- c('ACM-noPCV', 'J00-J06', 'J09-J18', 'J20-J22', 'J30-J39', 'J40-J47', 'J60-J70', 'J80-J84', 'J85-J86', 'J90-J94', 'J95-J99', 'A30-A49', 'G00-G09', 'H65-J75', 'B95-B98')
+exclude_from_covars <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39',  'J40-47',  'J60-70', 'J80-84', 'J85_J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98')
 
 ##################################################
 #                                                #
@@ -45,7 +45,7 @@ exclude_from_covars <- c('ACM-noPCV', 'J00-J06', 'J09-J18', 'J20-J22', 'J30-J39'
 ##################################################
 
 #Load file (.csv format). You can change the input and output directories to point to an appropriate spot on your computer.
-input_directory <- paste('~/Documents/Synthetic Control Data/', country, '/', sep = '')
+input_directory <- paste('~/Documents/Synthetic Control Data/SC_Dec/', country, '/', sep = '')
 output_directory <- paste(input_directory, 'results/', sep = '')
 dir.create(output_directory, showWarnings = FALSE)
 file_name <- paste('prelog', country, 'processed', 'data.csv', sep = '_')
@@ -65,7 +65,7 @@ if (country %in% SC_set || country %in% SC_subchapter_set) {
 	all_cause_pneu_name <- 'J12_18'
 	noj_name <- 'J20_22'
 } else if (country %in% SC_Dec_set) {
-	all_cause_name <- 'ACM_NoPCV'
+	all_cause_name <- 'ACM-NoPCV'
 	all_cause_pneu_name <- 'J12_18'
 	noj_name <- 'J20_22'
 } else if (country == 'US') {
@@ -104,8 +104,10 @@ data_end_date <- max(as.Date(ds1a[, date_name]))
 pre_period <- c(data_start_date, intervention_date) #Define training period
 post_period <- c(intervention_date + 1, data_end_date) #Define post-vaccine period.
 #Define evaluation period.
-if (country == 'Brazil' || country %in% SC_set || country %in% SC_subchapter_set || country %in% SC_Dec_set) {
+if (country == 'Brazil') {
 	eval_period <- c(as.Date(ds1a[, date_name][nrow(ds1a) - 23]), as.Date(ds1a[, date_name][nrow(ds1a)]))
+} else if (country %in% SC_set || country %in% SC_subchapter_set || country %in% SC_Dec_set) {
+	eval_period <- c(data_end_date - years(2), data_end_date)
 } else if (country == 'Chile' || country == 'Ecuador') {
 	eval_period <- c(as.Date(ds1a[, date_name][nrow(ds1a) - 11]), as.Date(ds1a[, date_name][nrow(ds1a)]))
 } else if (country == 'Mexico') {
