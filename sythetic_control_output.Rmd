@@ -49,6 +49,7 @@ plot_data_full <- read.csv(paste(output_directory, 'impact_responses/', country,
 plot_data_time <- read.csv(paste(output_directory, 'impact_responses/', country, '_impact_time', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
 for (group in names(impact_full)) {
 	cat('###', group, '\n', sep = '')
+	#plot(covars[[group]])
 	plot(zoo(cbind('Response' = plot_data_full[plot_data_full$group_factor == group, 'point.pred'], 'Outcome' = outcome[, group]), as.Date(plot_data_full[plot_data_full$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('SC and Outcome for', group), plot.type = 'single', col = 3:4)
 	legend(x = "topleft", bty = "n", lty = c(1,1), col = 3:4, legend = c('SC', 'Pneumo'))
 	plot(zoo(cbind(plot_data_time[plot_data_time$group_factor == group, 'point.pred'], outcome[, group]), as.Date(plot_data_time[plot_data_time$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('ITS and Outcome for', group), plot.type = 'single', col = 5:4)

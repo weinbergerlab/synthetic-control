@@ -367,14 +367,14 @@ invisible(lapply(age_groups, FUN = function(age_group) {
 }))
 
 #Plot results from offset model and full model
-par(mfrow = c(1, 1))
-par(mar = c(4, 4, 1, 1)) #bltr
-#plot(rr_mean_offset[, 2], rr_mean_full[, 2], bty = 'l', xlim = c(0.5, 1.5), ylim = c(0.5, 1.5))
-abline(v = 1, lty = 3)
-abline(h = 1, lty = 3)
-abline(a = 0, b = 1, lty = 2)
-par(mfrow = c(3, 1))
-par(mar = c(3, 2, 1, 1)) #bltr
+#par(mfrow = c(1, 1))
+#par(mar = c(4, 4, 1, 1)) #bltr
+##plot(rr_mean_offset[, 2], rr_mean_full[, 2], bty = 'l', xlim = c(0.5, 1.5), ylim = c(0.5, 1.5))
+#abline(v = 1, lty = 3)
+#abline(h = 1, lty = 3)
+#abline(a = 0, b = 1, lty = 2)
+#par(mfrow = c(3, 1))
+#par(mar = c(3, 2, 1, 1)) #bltr
 
 #log_rr_mean_offset <- log(rr_mean_offset)
 #log_rr_mean_offset[is.na(log_rr_mean_offset)] <- 1e6
@@ -389,10 +389,10 @@ plotModel(log_rr_mean_full)
 
 #Heatmaps
 #All posterior probabilities for variables for all age groups
-post_prob_full <- postProbHeatmap(inclusion_prob_full)
-#post_prob_noj <- postProbHeatmap(inclusion_prob_noj)
-write.csv(post_prob_full, paste(output_directory, country, '_post_prob_full.csv', sep = ''))
-#write.csv(post_prob_noj, paste(output_directory, country, '_post_prob_noj.csv', sep = ''))
+#post_prob_full <- postProbHeatmap(inclusion_prob_full)
+##post_prob_noj <- postProbHeatmap(inclusion_prob_noj)
+#write.csv(post_prob_full, paste(output_directory, country, '_post_prob_full.csv', sep = ''))
+##write.csv(post_prob_noj, paste(output_directory, country, '_post_prob_noj.csv', sep = ''))
 
 ################################
 #                              #
@@ -444,44 +444,44 @@ sensitivity_table <- read.csv(paste(output_directory, country, '_sensitivity_tab
 rr_table <- cbind(rr_mean_time, rr_table_full_2, sensitivity_table)
 write.csv(rr_table, paste(output_directory, country, '_rr_table.csv', sep = ''))
 
-if (do_weight_check) {
-	#Weight Checker - counts how often a covariate appears with an inclusion probability above 5% of that of the covariate with the greatest inclusion probability.
-	all_vars <- unique(c(colnames(ds1a), unlist(sapply(covars, colnames))))
-	weight_checker <- rep(0, length = length(all_vars) - 2)
-	names(weight_checker) <- all_vars[3:length(all_vars)]
-	for (iteration in 1:10) {
-		print(paste('Iteration', iteration, 'of', 10))
-		invisible(lapply(age_groups, FUN = function(age_group) {
-			par(mar = c(5, 4, 1, 2) + 0.1)
-			covar_df <- covars[[age_group]]
-			df <- ds[[age_group]]
-			
-			incl_prob <- plot(impact_full[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
-			max_var <- names(incl_prob[length(incl_prob)])
-			
-			weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
-																								 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
-			
-			for (i in 1:3) {
-				df <- df[, names(df) != max_var]
-				covar_df <- covar_df[, names(covar_df) != max_var]
-				
-				#Combine covars, outcome, date
-				data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
-				impact <- doCausalImpact(data, intervention_date, time_points, n_seasons)
-				
-				incl_prob <- plot(impact$model$bsts.model, 'coefficients', cex.names = 0.5, main = paste(age_group, 'Analysis', i))$inclusion.prob
-				max_var <- names(incl_prob[length(incl_prob)])
-				
-				#For weight checking: 
-				weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
-																									 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
-			}
-			return()
-		}))
-	}
-	
-	barplot(weight_checker[order(weight_checker, decreasing = TRUE)], las = 2)
-	weight_check_table <- matrix(weight_checker[order(weight_checker, decreasing = TRUE)], dimnames = list(names(weight_checker)[order(weight_checker, decreasing = TRUE)], c('Counts')))
-	weight_check_table
-}
+#if (do_weight_check) {
+#	#Weight Checker - counts how often a covariate appears with an inclusion probability above 5% of that of the covariate with the greatest inclusion probability.
+#	all_vars <- unique(c(colnames(ds1a), unlist(sapply(covars, colnames))))
+#	weight_checker <- rep(0, length = length(all_vars) - 2)
+#	names(weight_checker) <- all_vars[3:length(all_vars)]
+#	for (iteration in 1:10) {
+#		print(paste('Iteration', iteration, 'of', 10))
+#		invisible(lapply(age_groups, FUN = function(age_group) {
+#			par(mar = c(5, 4, 1, 2) + 0.1)
+#			covar_df <- covars[[age_group]]
+#			df <- ds[[age_group]]
+#			
+#			incl_prob <- plot(impact_full[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
+#			max_var <- names(incl_prob[length(incl_prob)])
+#			
+#			weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
+#																								 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
+#			
+#			for (i in 1:3) {
+#				df <- df[, names(df) != max_var]
+#				covar_df <- covar_df[, names(covar_df) != max_var]
+#				
+#				#Combine covars, outcome, date
+#				data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
+#				impact <- doCausalImpact(data, intervention_date, time_points, n_seasons)
+#				
+#				incl_prob <- plot(impact$model$bsts.model, 'coefficients', cex.names = 0.5, main = paste(age_group, 'Analysis', i))$inclusion.prob
+#				max_var <- names(incl_prob[length(incl_prob)])
+#				
+#				#For weight checking: 
+#				weight_checker <<- weight_checker + ifelse(is.na(incl_prob[names(weight_checker)]), 0, 
+#																									 ifelse(incl_prob[names(weight_checker)] >= 0.05 * max(incl_prob), 1, 0))
+#			}
+#			return()
+#		}))
+#	}
+#	
+#	barplot(weight_checker[order(weight_checker, decreasing = TRUE)], las = 2)
+#	weight_check_table <- matrix(weight_checker[order(weight_checker, decreasing = TRUE)], dimnames = list(names(weight_checker)[order(weight_checker, decreasing = TRUE)], c('Counts')))
+#	weight_check_table
+#}

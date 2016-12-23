@@ -143,17 +143,17 @@ plotModel <- function(model) {
 }
 
 #Saves the posterior probabilities
-postProbHeatmap <- function(data) {
-	post_prob <- Reduce(function(a, b) {
-		ans <- merge(a, b, by = 'row.names', all = TRUE)
-		row.names(ans) <- ans[, 'Row.names']
-		ans[, !names(ans) %in% 'Row.names']
-	}, data)
-	post_prob <- post_prob[complete.cases(post_prob), ]
-	my_palette <- colorRampPalette(c('white','black'))(n = 299)
-	heatmap(sqrt(as.matrix(post_prob[,1:length(age_groups)])), scale = 'none', col = my_palette)
-	return(post_prob)
-}
+#postProbHeatmap <- function(data) {
+#	post_prob <- Reduce(function(a, b) {
+#		ans <- merge(a, b, by = 'row.names', all = TRUE)
+#		row.names(ans) <- ans[, 'Row.names']
+#		ans[, !names(ans) %in% 'Row.names']
+#	}, data)
+#	post_prob <- post_prob[complete.cases(post_prob), ]
+#	my_palette <- colorRampPalette(c('white','black'))(n = 299)
+#	heatmap(sqrt(as.matrix(post_prob[,1:length(age_groups)])), scale = 'none', col = my_palette)
+#	return(post_prob)
+#}
 
 #Sensitivity analysis by dropping the top weighted covariates. 
 sensitivityAnalysis <- function(age_group, covars, impact, time_points, intervention_date, n_seasons) {
@@ -164,7 +164,6 @@ sensitivityAnalysis <- function(age_group, covars, impact, time_points, interven
 	incl_prob <- plot(impact[[age_group]]$model$bsts.model, 'coefficients', cex.names = 0.5, main = age_group)$inclusion.prob 
 	max_var <- names(incl_prob[length(incl_prob)])
 	max_prob <- incl_prob[length(incl_prob)]
-	
 	sensitivity_analysis <- vector('list', 3)
 	
 	for (i in 1:3) {
