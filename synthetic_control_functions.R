@@ -122,8 +122,6 @@ plotPred <- function(age_group, data) {
 	post_period_start <- which(time_points == post_period[1]) 
 	post_period_end <- which(time_points == post_period[2])
 	
-	#min_plot <- min(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
-	#max_plot <- max(c(pred_quantiles_ach[,, age_group], pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
 	min_plot <- min(c(pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
 	max_plot <- max(c(pred_quantiles_full[,, age_group], outcome_plot[, age_group]))
 	xx <- c(time_points[post_period_start:post_period_end], rev(time_points[post_period_start:post_period_end]))
@@ -141,19 +139,6 @@ plotModel <- function(model) {
 	arrows(1:length(age_groups), model[1:length(age_groups), 'Lower CI'], 1:length(age_groups), model[, 'Upper CI'], code = 3, angle = 90, length = 0.0)
 	abline(h = 0)
 }
-
-#Saves the posterior probabilities
-#postProbHeatmap <- function(data) {
-#	post_prob <- Reduce(function(a, b) {
-#		ans <- merge(a, b, by = 'row.names', all = TRUE)
-#		row.names(ans) <- ans[, 'Row.names']
-#		ans[, !names(ans) %in% 'Row.names']
-#	}, data)
-#	post_prob <- post_prob[complete.cases(post_prob), ]
-#	my_palette <- colorRampPalette(c('white','black'))(n = 299)
-#	heatmap(sqrt(as.matrix(post_prob[,1:length(age_groups)])), scale = 'none', col = my_palette)
-#	return(post_prob)
-#}
 
 #Sensitivity analysis by dropping the top weighted covariates. 
 sensitivityAnalysis <- function(age_group, covars, impact, time_points, intervention_date, n_seasons) {
@@ -184,18 +169,6 @@ sensitivityAnalysis <- function(age_group, covars, impact, time_points, interven
 
 rrTable <- function(age_group, impact, sensitivity_analysis, eval_period) {
 	rr_pred_quantile <- rrPredQuantiles(impact = impact[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)
-	cred_int <- c('Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
-	cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-		rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]]$impact, all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)
-		cred_int <- c(sensitivity_analysis[[age_group]][[i]]$removed_var, round(rr_pred_quantile$mean_rr, 4), paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
-		names(cred_int) <- c(paste('Removed Variable', i), paste('Analysis', i), paste('Analysis', i, '.95'))
-		return(cred_int)
-	})
-	c(cred_int, cred_int_analyses, recursive = TRUE)
-}
-
-rrTable2 <- function(age_group, impact, sensitivity_analysis, eval_period) {
-	rr_pred_quantile <- rrPredQuantiles(impact = impact[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period)
 	cred_int <- c(rr_pred_quantile$rr[1], rr_pred_quantile$rr[2], rr_pred_quantile$rr[3])
 	names(cred_int) <- paste('SC', rr_col_names)
 	cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
@@ -203,7 +176,6 @@ rrTable2 <- function(age_group, impact, sensitivity_analysis, eval_period) {
 		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i))
 		return(top_control)
 	})
-	#return(c(cred_int, cred_int_analyses, recursive = TRUE))
 	return(cred_int)
 }
 
