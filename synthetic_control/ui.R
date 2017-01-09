@@ -66,7 +66,7 @@ shinyUI(fluidPage(
 		#),
 		checkboxInput(
 			inputId = 'adjust_covariates_checkbox',
-			label = 'Adjust for year 2008 coding change.',
+			label = 'Adjust for year 2008 coding change (Brazil only).',
 			value = FALSE
 		),
 		conditionalPanel(
@@ -86,12 +86,12 @@ shinyUI(fluidPage(
 		tags$hr(),
 		dateRangeInput(
 			inputId = 'training_range',
-			label = 'Training range',
+			label = 'Training Range (YYYY-MM-01)',
 			start = NULL, end = NULL
 		),
 		dateRangeInput(
 			inputId = 'eval_range',
-			label = 'Evaluation range',
+			label = 'Evaluation Range (YYYY-MM-01)',
 			start = NULL, end = NULL
 		),
 		tags$hr(),
@@ -111,22 +111,37 @@ shinyUI(fluidPage(
 						uiOutput('tab_view')
 	)), 
 	
-	hr(),
-	span('*To use this applet properly, the file should be a .csv and the date must be in the YYYY-MM-DD format. We also suggest preprocessing using a method similar to that found in '),
-	downloadLink(
-		outputId = 'download_preprocesser',
-		label = 'this R script,'
-	),
-	span('which you are free to download and modify. We provide '),
-	downloadLink(
-		outputId = 'download_sample',
-		label = 'an example dataset'
-	), 
-	span('for testing and comparison purposes.'),
-	span('For additional information and answers to commonly asked questions, visit the applet\'s'),
-	a(target = '_blank', 'help page.', href = 'https://apps.google.com/products/sites/'),
-	
-	hr(), 
-	span('This applet uses the Causal Impact R package developed by Google. For more information about the package, visit the'),
-	a(target = '_blank', 'Causal Impact GitHub page.', href = 'https://google.github.io/CausalImpact/')
+	fluidRow(
+		column(12, align = 'justify',
+		hr(),
+		span('*To use this applet properly, the file should be a .csv and the date must be in the YYYY-MM-DD format. We also suggest preprocessing using a method similar to that found in '),
+		downloadLink(
+			outputId = 'download_preprocesser',
+			label = 'this R script,'
+		),
+		span('which you are free to download and modify. We provide '),
+		downloadLink(
+			outputId = 'download_sample',
+			label = 'an example dataset'
+		), 
+		span('for testing and comparison purposes.'),
+		span('For additional information and answers to commonly asked questions, visit the applet\'s'),
+		a(target = '_blank', 'help page.', href = 'https://apps.google.com/products/sites/'),
+		
+		hr(), 
+		span('This applet uses the Causal Impact R package developed by Google. For more information about the package, visit the'),
+		a(target = '_blank', 'Causal Impact GitHub page.', href = 'https://google.github.io/CausalImpact/'), 
+		
+		hr(), 
+		span('This app was developed by VIPR (Vaccine ImPact Research), a collaborative network of investigators based at Yale University (Weinberger lab), George Washington University (Lone Simonsen), and Sage Analytica focused on evaluating the impacts of vaccines around the world. VIPR works on developing and using cutting-edge data analysis approaches to estimate the impacts of vaccines from imperfect data sources. The project is supported by a grant from the Bill and Melinda Gates Foundation to Yale University (PI: Weinberger). The synthetic control analyses are based on the model and code developed by '),
+		a(target = '_blank', 'Brodersen et al.', href = 'https://research.google.com/pubs/pub41854.html') 
+	)),
+	fluidRow(
+		column(6, align = 'center',
+			imageOutput('Sage')
+		),
+		column(6, align = 'center',
+			imageOutput('Yale')
+		)
+	)
 ))

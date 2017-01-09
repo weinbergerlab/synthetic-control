@@ -27,6 +27,18 @@ shinyServer(function(input, output, session) {
 		content <- function(file) {file.copy('./downloads/example_data.csv', file)},
 		contentType = 'text/csv'
 	)
+	output$Sage <- renderImage(list(
+		src = 'images/Sage Analytica Logo.png',
+		contentType = 'image/png', 
+		alt = 'Sage Analytica Logo', 
+		height = 100
+	), deleteFile = FALSE)
+	output$Yale <- renderImage(list(
+		src = 'images/Yale Logo.png',
+		contentType = 'image/png', 
+		alt = 'Yale Logo', 
+		height = 100
+	), deleteFile = FALSE)
 	
 	progress <<- Progress$new()
 	customIncProgress <- function(amount = 0, reset = FALSE) {
@@ -170,11 +182,7 @@ shinyServer(function(input, output, session) {
 			return(covars)
 		}
 	}) #Possibly add 2nd model and 3rd model for covars_ach and covars_noj
-	covars_none <- eventReactive(covars(), {
-		setNames(lapply(covars(), FUN = function(covars) {
-			as.data.frame(list(constant = rep(1, times = nrow(covars))))
-		}), age_groups())
-	}) #Add conditionals for model selection
+	#Add conditionals for model selection
 	covars_time <- eventReactive(covars(), {
 		setNames(lapply(covars(), FUN = function(covars) {
 			as.data.frame(list(time_index = 1:nrow(covars)))
@@ -224,10 +232,7 @@ shinyServer(function(input, output, session) {
 		age_groups <- age_groups()
 		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome(), covars = covars(), time_points = time_points(), scale_outcome = FALSE), age_groups)
 	})
-	data_none <- eventReactive(list(outcome(), time_points()), {
-		age_groups = age_groups()
-		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome(), covars = covars_none(), time_points = time_points(), scale_outcome = FALSE), age_groups)
-	}) #Add conditional for model selection.
+	#Add conditional for model selection.
 	data_time <- eventReactive(list(outcome(), time_points()), {
 		age_groups <- age_groups()
 		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome(), covars = covars_time(), time_points = time_points(), scale_outcome = TRUE), age_groups)
@@ -256,26 +261,6 @@ shinyServer(function(input, output, session) {
 		customIncProgress(amount = 0.2)
 		
 		return(impact_full)
-	})
-	impact_none <- eventReactive(data_none(), {
-		age_groups <- age_groups()
-		zoo_data <- data_none()
-		time_points <- time_points()
-		intervention_date <- as.Date(as.character(locked_input()$training_range))[2]
-		
-		progress$set(message = 'Running No-covariate Model.')
-		
-		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
-		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
-		
-		impact_none <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points), age_groups)
-		
-		stopCluster(cl)
-		
-		customIncProgress(amount = 0.2)
-		
-		return(impact_none)
 	})
 	impact_time <- eventReactive(data_time(), {
 		age_groups <- age_groups()
@@ -320,11 +305,6 @@ shinyServer(function(input, output, session) {
 		impact <- impact_full()
 		setNames(mapply(inclusionProb, age_groups, impact, SIMPLIFY = FALSE), age_groups)
 	})
-	inclusion_prob_none <- eventReactive(impact_none(), {
-		age_groups <- age_groups()
-		impact <- impact_none()
-		setNames(mapply(inclusionProb, age_groups, impact, SIMPLIFY = FALSE), age_groups)
-	})
 	inclusion_prob_time <- eventReactive(impact_time(), {
 		age_groups <- age_groups()
 		impact <- impact_time()
@@ -333,22 +313,19 @@ shinyServer(function(input, output, session) {
 	
 	#Model results
 	quantiles_full   <- eventReactive(impact_full(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
-	quantiles_none   <- eventReactive(impact_none(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_none()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
 	quantiles_time   <- eventReactive(impact_time(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
 	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()), offset = TRUE)}), age_groups())})
 	
 	pred_quantiles_full   <- eventReactive(quantiles_full(),   {sapply(quantiles_full(),   getPred, simplify = 'array')})
-	pred_quantiles_none   <- eventReactive(quantiles_none(),   {sapply(quantiles_none(),   getPred, simplify = 'array')})
 	pred_quantiles_time   <- eventReactive(quantiles_time(),   {sapply(quantiles_time(),   getPred, simplify = 'array')})
 	pred_quantiles_offset <- eventReactive(quantiles_offset(), {sapply(quantiles_offset(), getPred, simplify = 'array')})
 	
 	rr_roll_full <- eventReactive(quantiles_full(), sapply(quantiles_full(), FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array'))
 	rr_roll_time <- eventReactive(quantiles_time(), sapply(quantiles_time(), FUN = function(quantiles_time) {quantiles_time$roll_rr}, simplify = 'array'))
 	
-	rr_mean_full   <- eventReactive(quantiles_full(),   {t(sapply(quantiles_full(),   getRR))})
-	rr_mean_none   <- eventReactive(quantiles_none(),   {t(sapply(quantiles_none(),   getRR))})
-	rr_mean_time   <- eventReactive(quantiles_time(),   {t(sapply(quantiles_time(),   getRR))})
-	rr_mean_offset <- eventReactive(quantiles_offset(), {t(sapply(quantiles_offset(), getRR))})
+	rr_mean_full   <- eventReactive(quantiles_full(),   {quantiles <- cbind(age_groups(), t(sapply(quantiles_full(),   getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
+	rr_mean_time   <- eventReactive(quantiles_time(),   {quantiles <- cbind(age_groups(), t(sapply(quantiles_time(),   getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
+	rr_mean_offset <- eventReactive(quantiles_offset(), {quantiles <- cbind(age_groups(), t(sapply(quantiles_offset(), getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
 	
 	#Cumulative sum of prevented cases
 	plot_cumsum_prevented <- eventReactive(quantiles_full(), {
@@ -406,7 +383,8 @@ shinyServer(function(input, output, session) {
 		outcome_sd <- isolate(outcome_sd())
 		sapply(age_groups, FUN = function(age_group) {
 			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
-			cred_int <- c('Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
+			cred_int <- c(age_group, 'Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
+			names(cred_int)[1] <- locked_input()$age_group
 			cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
 				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
 				cred_int <- c(round(rr_pred_quantile$mean_rr, 4), paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
@@ -426,7 +404,7 @@ shinyServer(function(input, output, session) {
 			} else if (length(bad_covars) == 1) {
 				return(paste('Note that', bad_covars, 'was removed due to insufficient data.'))
 			} else {
-				return(paste('Note that', paste(bad_covars, collapse = ", "), 'were removed due to insufficient data.'))
+				return(paste('Note that', paste(bad_covars, collapse = ", "), 'were removed from the analysis due to insufficient data.'))
 			}
 		}), age_groups())
 	})
@@ -435,7 +413,6 @@ shinyServer(function(input, output, session) {
 		covars <- covars()
 		age_groups <- age_groups()
 		pred_quantiles_full <- pred_quantiles_full()
-		pred_quantiles_none <- pred_quantiles_none()
 		pred_quantiles_time <- pred_quantiles_time()
 		pred_quantiles_offset <- pred_quantiles_offset()
 		inclusion_prob <- inclusion_prob_full()
@@ -443,14 +420,13 @@ shinyServer(function(input, output, session) {
 			dates <- as.Date(as.character(ds[[age_group]][, locked_input()$date]))
 			tab <- tabPanel(
 				title = age_group, 
-				renderPlot(plotPred(data = pred_quantiles_full()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Full Impact Plot')),
-				renderPlot(plotPred(data = pred_quantiles_none()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'No Covariate Impact Plot')),
-				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Time Trend Impact Plot')),
-				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Offset Impact Plot')),
-				renderPlot(matplot(rr_roll_full()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Synthetic controls: rolling rate ratio'))),
-				renderPlot(matplot(rr_roll_time()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Interupted time series: rolling rate ratio'))),
+				renderPlot(plotPred(data = pred_quantiles_full()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Full Synthetic Control Plot')),
+				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Interrupted Time Series Plot')),
+				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Simple Pre-post Comparison Plot')),
+				renderPlot({matplot(rr_roll_full()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Synthetic controls: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
+				renderPlot({matplot(rr_roll_time()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Interupted time series: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
 				renderPlot(plot(impact_full()[[age_group]]$model$bsts.model, 'coefficients', main = age_group)),
-				renderPlot(plot(zoo(covars[[age_group]][, rownames(inclusion_prob[[age_group]])[2:length(rownames(inclusion_prob[[age_group]]))]], dates), plot.type = 'single', type = 'l', main = 'Selected Covariates', xlab = 'Time', ylab = 'Scaled Values', col = rgb(0, 0, 0, alpha = unlist(inclusion_prob[[age_group]][2:length(rownames(inclusion_prob[[age_group]])),])))), #col = rainbow(ncol(covars[[age_group]]))
+				renderPlot(plot(zoo(covars[[age_group]][, rownames(inclusion_prob[[age_group]])[2:length(rownames(inclusion_prob[[age_group]]))]], dates), plot.type = 'single', type = 'l', main = 'Weight Assigned to Different Covariates', xlab = 'Time', ylab = 'Scaled Values', col = rgb(0, 0, 0, alpha = unlist(inclusion_prob[[age_group]][2:length(rownames(inclusion_prob[[age_group]])),])))), #col = rainbow(ncol(covars[[age_group]]))
 				renderText(covar_warning()[[age_group]])
 			)
 			return(tab)
@@ -459,8 +435,7 @@ shinyServer(function(input, output, session) {
 		summary_tab <- tabPanel(
 			title = 'Summary',
 			h3("Rate ratios and credible intervals from main analyses."),
-			renderTable(rr_mean_full(), caption = 'Full Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
-			renderTable(rr_mean_none(), caption = 'No Covariate Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
+			renderTable(rr_mean_full(), caption = 'Full Synthetic Control Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
 			renderTable(rr_mean_time(), caption = 'Time Trend Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
 			renderTable(rr_mean_offset(), caption = 'Offset Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
 			h3(sensitivity_header),

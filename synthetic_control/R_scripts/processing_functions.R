@@ -146,9 +146,9 @@ plotPred <- function(data, time_points, post_period, pred_quantiles_full, pred_q
 	max_plot<-max(c(pred_quantiles_offset, pred_quantiles_full, outcome_plot))
 	xx <- c(time_points[post_period_start:post_period_end], rev(time_points[post_period_start:post_period_end]))
 	ci_poly <- c(data[post_period_start:post_period_end, 1], rev(data[post_period_start:post_period_end, 3]))
-	plot(time_points, data[,2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot), main = title, xlab = 'Time', ylab = 'Data Values')
+	plot(time_points, data[, 2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min(0, min_plot), max_plot), main = title, xlab = 'Time', ylab = 'Number of Cases')
 	polygon(xx, ci_poly, lty = 0, col = 'lightgray')
-	points(time_points, data[,2], type = 'l', col = 'white', lty = 2)
+	points(time_points, data[, 2], type = 'l', col = 'white', lty = 2)
 	points(time_points, outcome_plot, type = 'l', col = 'black', lwd = 2)
 	if (fix_2008) {abline(v = as.Date('2008-01-01'), lty = 2)}
 }
