@@ -2,10 +2,11 @@
 title: "Synthetic Controls"
 date: 'Report generated `r format(Sys.time(), "%A, %B %d, %Y")`'
 knit: (function(inputFile, encoding) { 
-      out_dir <- paste(paste('~/Documents/Synthetic Control Data/SC_Dec/', 'SC_Dec_National', '/', sep = ''), 'results', sep = '');
+      country <<- 'SC_Dec/HDIxSuperRegion';
+      out_dir <- paste(paste('~/Documents/Synthetic Control Data/', country, '/', sep = ''), 'results', sep = '');
       rmarkdown::render(inputFile,
-                        encoding=encoding, 
-                        output_file=file.path(out_dir, 'analysis.html')) })
+                        encoding = encoding, 
+                        output_file = file.path(out_dir, 'analysis.html')) })
 output:
  html_document:
   toc: TRUE
@@ -22,38 +23,41 @@ knitr::opts_chunk$set(echo = FALSE)
 ```
 
 ```{r analysis, include = FALSE}
-source('~/GitHub/synthetic-control/synthetic_control_analysis.R')
+source('~/GitHub/synthetic-control/synthetic_control_analysis_function.R')
+results <- syntheticControl(country = country, use_defaults = TRUE)
 ```
 
 #`r country` Results
 
 ##ITS
 ```{r ITS}
-knitr::kable(rr_mean_time)
+knitr::kable(results$rr_mean_time)
 ```
 
 ##Synthetic Controls
 ```{r SC}
-knitr::kable(rr_mean_full)
+knitr::kable(results$rr_mean_full)
 ```
 
-##Sensitivity Analysis
+##Weight Sensitivity Analysis
 ```{r sensitivity}
-knitr::kable(sensitivity_table, align = 'c')
+knitr::kable(results$sensitivity_table, align = 'c')
+```
+
+##Pred Sensitivity Analysis
+```{r pred_sensitivity}
+knitr::kable(results$pred_sensitivity$pred_2, align = 'c', caption = 'n_pred = 2')
+knitr::kable(results$pred_sensitivity$pred_10, align = 'c', caption = 'n_pred = 10')
 ```
 
 ##Plots
-
 ```{r plots, results = 'asis'}
-plot_data_full <- read.csv(paste(output_directory, 'impact_responses/', country, '_impact_full', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
-plot_data_time <- read.csv(paste(output_directory, 'impact_responses/', country, '_impact_time', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
-for (group in names(impact_full)) {
+plot_data_full <- read.csv(paste(results$output_directory, 'impact_responses/', country, '_impact_full', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
+plot_data_time <- read.csv(paste(results$output_directory, 'impact_responses/', country, '_impact_time', '_response.csv', sep = ''), check.names = FALSE, stringsAsFactors = FALSE)
+for (group in results$groups) {
 	cat('###', group, '\n', sep = '')
-	#plot(covars[[group]])
-	plot(zoo(cbind('Response' = plot_data_full[plot_data_full$group_factor == group, 'point.pred'], 'Outcome' = outcome[, group]), as.Date(plot_data_full[plot_data_full$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('SC and Outcome for', group), plot.type = 'single', col = 3:4)
-	legend(x = "topleft", bty = "n", lty = c(1,1), col = 3:4, legend = c('SC', 'Pneumo'))
-	plot(zoo(cbind(plot_data_time[plot_data_time$group_factor == group, 'point.pred'], outcome[, group]), as.Date(plot_data_time[plot_data_time$group_factor == group, 'date'])), xlab = 'Date', ylab = 'Response Values', main = paste('ITS and Outcome for', group), plot.type = 'single', col = 5:4)
-	legend(x = "topleft", bty = "n", lty = c(1,1), col = 5:4, legend = c('ITS', 'Pneumo'))
+	plotPred(results$pred_quantiles_full[, , group], results$time_points, results$post_period, results$pred_quantiles_full[, , group], results$outcome_plot[, group], country, title = paste(group, 'Synthetic controls estimate'))
+		plotPred(results$pred_quantiles_time[, , group], results$time_points, results$post_period, results$pred_quantiles_full[, , group], results$outcome_plot[, group], country, title = paste(group, 'Interupted time series estimate'))
 	cat('\n\n')
 }
 ```
