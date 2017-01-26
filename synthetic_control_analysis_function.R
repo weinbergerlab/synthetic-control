@@ -3,9 +3,6 @@
 # *_full - This is the full synthetic control model with all covariates.
 # *_time - Trend adjustment using the specified variable (e.g., non-respiratory hospitalization or population size) as the denominator.
 
-rm(list = ls(all = TRUE)) #Clear workspace
-gc()
-
 #install.packages('devtools')
 #library(devtools)
 #devtools::install_github('google/CausalImpact')
@@ -16,25 +13,61 @@ library('lubridate', quietly = TRUE)
 library('CausalImpact', quietly = TRUE)
 source('synthetic_control_functions.R')
 
-#Detects number of available cores on computers. Used for parallel processing to speed up analysis.
-n_cores <- detectCores()
-set.seed(1)
-par_defaults <- par(no.readonly = TRUE)
+checkArguments <- function(use_defaults, input_directory, file_name, all_cause_name, all_cause_pneu_name, intervention_date, eval_period) {
+	if (!use_defaults) {
+		if (is.null(input_directory)) {
+			stop('Missing argument for input_directory.')
+		}
+		if (is.null(file_name)) {
+			stop('Missing argument for file_name.')
+		}
+		if (is.null(all_cause_name)) {
+			stop('Missing argument for all_cause_name.')
+		}
+		if (is.null(all_cause_pneu_name)) {
+			stop('Missing argument for all_cause_pneu_name.')
+		}
+		if (is.null(intervention_date)) {
+			stop('Missing argument for intervention_date.')
+		}
+		if (is.null()) {
+			stop('Missing argument for eval_period.')
+		}
+	}
+}
 
-#############################
-#                           #
-#User-initialized constants.#
-#                           #
-#############################
-
-country <- 'SC_Dec/HDIxSuperRegion'
-factor_name <- 'age_group'
-date_name <- 'date'
-n_seasons <- NULL #12 for monthly, 4 for quarterly, 3 for trimester data.
-do_weight_check <- FALSE
-exclude_from_covars <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39', 'J40-47', 'J60-70', 'J80-84', 'J85-J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98')
-exclude_from_covars <- c(exclude_from_covars, gsub('-', '_', exclude_from_covars))
-
+syntheticControl <- function(
+	country, 
+	use_defaults = FALSE, 
+	seed = 1,
+	n_cores = detectCores(), #Detects number of available cores on computers. Used for parallel processing to speed up analysis.
+	factor_name = 'age_group', 
+	date_name = 'date', 
+	n_seasons = 12,
+	do_weight_check = FALSE, 
+	exclude_from_covars = NULL, 
+	input_directory = NULL, 
+	output_directory = paste(input_directory, 'results/', sep = ''),
+	file_name = NULL,
+	all_cause_name = NULL,
+	all_cause_pneu_name = NULL,
+	data_start_date = NULL,
+	data_end_date = NULL,
+	intervention_date = NULL,
+	eval_period = NULL) {
+	
+	checkArguments(use_defaults, input_directory, file_name, all_cause_name, all_cause_pneu_name, intervention_date, eval_period)
+	
+	set.seed(seed)
+	par_defaults <- par(no.readonly = TRUE)
+	
+	if (use_defaults) {
+		factor_name <- 'age_group'
+		date_name <- 'date'
+		do_weight_check <- FALSE
+		exclude_from_covars <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39', 'J40-47', 'J60-70', 'J80-84', 'J85_J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98')
+		exclude_from_covars <- c(exclude_from_covars, gsub('-', '_', exclude_from_covars))
+		
 ##################################################
 #                                                #
 #Directory setup and initialization of constants.#
@@ -43,7 +76,7 @@ exclude_from_covars <- c(exclude_from_covars, gsub('-', '_', exclude_from_covars
 
 #Load file (.csv format). You can change the input and output directories to point to an appropriate spot on your computer.
 input_directory <- paste('~/Documents/Synthetic Control Data/', country, '/', sep = '')
-country <- gsub('/', '_', country)
+		country <- gsub('/', '_', country)
 output_directory <- paste(input_directory, 'results/', sep = '')
 dir.create(output_directory, showWarnings = FALSE)
 file_name <- paste('prelog', country, 'processed', 'data.csv', sep = '_')
@@ -110,13 +143,36 @@ if (country == 'Brazil') {
 	eval_period <- c(as.Date('2003-01-01'), as.Date('2004-12-01'))
 }
 
-#Seasons
-if (is.null(n_seasons)) {
+#Seasons 
+#12 for monthly, 4 for quarterly, 3 for trimester data.
 	if (country %in% SC_set || country %in% SC_subchapter_set || country %in% SC_Dec_set) {
 		n_seasons <- 3
 	} else {
 		n_seasons <- 12
 	}	
+
+	} else {
+		pcv_file <- paste(input_directory, file_name, sep = '')
+		ds1a <- read.csv(pcv_file, check.names = FALSE)
+		age_groups <- paste('Age Group', unique(unlist(ds1a$age_group, use.names = FALSE)))
+		if (is.null(data_start_date)) {
+			data_start_date <- min(as.Date(ds1a[, date_name]))
+		} else {
+			data_start_date <- as.Date(data_start_date)
+		}
+		if (is.null(data_end_date)) {
+			data_end_date <- max(as.Date(ds1a[, date_name]))
+		} else {
+			data_end_date <- as.Date(data_end_date)
+		}
+		intervention_date <- as.Date(intervention_date)
+		if (is.null(pre_period)) {
+			pre_period <- c(data_start_date, intervention_date) #Define training period
+		}
+		if (is.null(post_period)) {
+			post_period <- c(intervention_date + 1, data_end_date) #Define post-vaccine period.
+		}
+		
 }
 
 #############################################
@@ -149,7 +205,7 @@ age_groups <- age_groups[!sparse_age_groups]
 covars <- setNames(lapply(ds, FUN = function(ds_group) {
 	if (country == 'Brazil') {
 		#Eliminates effects from 2008 coding change
-		covars <- ds_group[data_start:nrow(ds_group), 4:ncol(ds_group)]
+		covars <- ds_group[data_start:nrow(ds_group), 4:ncol(ds_group), , drop = FALSE]
 		month_i <- as.factor(as.numeric(format(ds_group[, date_name][data_start:nrow(ds_group)], '%m')))
 		spline <- setNames(as.data.frame(bs(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
 		year_2008 <- numeric(nrow(covars))
@@ -196,7 +252,7 @@ data_time <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome_offse
 #Start Cluster for CausalImpact (the main analysis function).
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
-clusterExport(cl, c('ds', 'doCausalImpact', 'intervention_date', 'time_points', 'n_seasons'), environment())
+clusterExport(cl, c('doCausalImpact', 'intervention_date', 'time_points', 'n_seasons'), environment())
 
 impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), age_groups)
 impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), age_groups)
@@ -377,3 +433,5 @@ write.csv(sensitivity_table, paste(output_directory, country, '_sensitivity_tabl
 sensitivity_table <- read.csv(paste(output_directory, country, '_sensitivity_table.csv', sep = ''), check.names = FALSE, row.names = 1)
 rr_table <- cbind(rr_mean_time[!bad_sensitivity_analysis_age_groups, ], rr_table, sensitivity_table)
 write.csv(rr_table, paste(output_directory, country, '_rr_table.csv', sep = ''))
+return(list(groups = age_groups, sparse_groups = sparse_age_groups, output_directory = output_directory, time_points = time_points, post_period = post_period, outcome = outcome, outcome_plot = outcome_plot, pred_quantiles_full = pred_quantiles_full, pred_quantiles_time = pred_quantiles_time, rr_mean_full = rr_mean_full, rr_mean_time = rr_mean_time, sensitivity_table = sensitivity_table, pred_sensitivity = list(pred_2 = sensitivity_analysis_pred_2, pred_10 = sensitivity_analysis_pred_10)))
+}
