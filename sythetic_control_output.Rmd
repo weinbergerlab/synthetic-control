@@ -24,10 +24,16 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ```{r analysis, include = FALSE}
 source('~/GitHub/synthetic-control/synthetic_control_analysis_function.R')
+original_country <- country
 results <- syntheticControl(country = country, use_defaults = TRUE)
+country <- gsub('/', '_', country)
 ```
 
 #`r country` Results
+
+```{r sparse}
+knitr::kable(data.frame('Sparse Groups' = names(results$sparse_groups[results$sparse_groups]), check.names = FALSE))
+```
 
 ##ITS
 ```{r ITS}

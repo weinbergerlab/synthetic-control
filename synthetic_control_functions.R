@@ -1,13 +1,18 @@
 #This is the function file. It is called directly from the analysis file.
 
 #Log-transform the data.
-logTransform <- function(factor_name, factor_value, date_name, start_date, prelog_data) {
+logTransform <- function(factor_name, factor_value, date_name, all_cause_name, all_cause_pneu_name, start_date, prelog_data) {
 	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
 	ds <- ds[match(start_date, ds[, date_name]):nrow(ds), ]
+	ds <- cbind(ds[, colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name)], filterSparse(ds[, !(colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name))]))
 	ds[ds == 0] <- 0.5
 	ds[, !(colnames(ds) %in% c(factor_name, date_name))] <- log(ds[, !(colnames(ds) %in% c(factor_name, date_name))])
 	return(ds)
+}
+
+filterSparse <- function(dataset, threshold = 10) {
+	return(dataset[, colMeans(dataset) > threshold, drop = FALSE])
 }
 
 #Used to adjust the Brazil data for a code shift in 2008.
@@ -173,16 +178,11 @@ predSensitivityAnalysis <- function(group, ds, zoo_data, intervention_date, time
 	return(rr_mean)
 }
 
-rrTable <- function(age_group, impact, outcome_mean, outcome_sd, sensitivity_analysis, eval_period, post_period) {
+rrTable <- function(age_group, impact, outcome_mean, outcome_sd, eval_period, post_period) {
 	rr_pred_quantile <- rrPredQuantiles(impact = impact[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)
 	cred_int <- c(rr_pred_quantile$rr[1], rr_pred_quantile$rr[2], rr_pred_quantile$rr[3])
 	rr_col_names <- c('Lower CI', 'Point Estimate', 'Upper CI')
 	names(cred_int) <- paste('SC', rr_col_names)
-	cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-		top_control <- c(sensitivity_analysis[[age_group]][[i]]$removed_var, sensitivity_analysis[[age_group]][[i]]$removed_prob)
-		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i))
-		return(top_control)
-	})
 	return(cred_int)
 }
 
