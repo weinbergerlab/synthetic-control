@@ -225,9 +225,12 @@ covars <- setNames(lapply(ds, FUN = function(ds_group) {
 	}
 	return(covars)
 }), age_groups)
-covars <- sapply(covars, FUN = function(covars) {covars[, !(colnames(covars) %in% exclude_from_covars)]})
+covars <- sapply(covars, FUN = function(covars) {covars[, !(colnames(covars) %in% exclude_from_covars), drop = FALSE]})
 covars_time <- setNames(lapply(covars, FUN = function(covars) {
 	as.data.frame(list(time_index = 1:nrow(covars)))
+}), age_groups)
+covars_none <- setNames(lapply(covars, FUN = function(covars) {
+	as.data.frame(list(constant = rep(1, times = nrow(covars))))
 }), age_groups)
 
 #Standardize the outcome variables and save the original mean and SD for later analysis.
@@ -242,6 +245,7 @@ outcome_offset_sd <- sapply(ds, FUN = function(data) {sd(data[, all_cause_pneu_n
 #Combine the outcome, covariates, and time point information.
 data_full <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars,      time_points = time_points, scale_outcome = FALSE), age_groups)
 data_time <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome_offset, covars = covars_time, time_points = time_points, scale_outcome = TRUE ), age_groups)
+data_none <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars_none, time_points = time_points, scale_outcome = FALSE), age_groups)
 
 ###############################
 #                             #
@@ -256,12 +260,13 @@ clusterExport(cl, c('doCausalImpact', 'intervention_date', 'time_points', 'n_sea
 
 impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), age_groups)
 impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), age_groups)
+impact_none <- setNames(parLapply(cl, data_none, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), age_groups)
 
 stopCluster(cl)
 
 #Save the synthetic control response data.
 dir.create(paste(output_directory, 'impact_responses/', sep = ''), showWarnings = FALSE)
-impact_list <- list('impact_full' = impact_full, 'impact_time' = impact_time)
+impact_list <- list('impact_full' = impact_full, 'impact_time' = impact_time, 'impact_none' = impact_none)
 for (impact_set in names(impact_list)) {
 	impact_series <- NULL
 	for (group_factor in names(impact_list[[impact_set]])) {
@@ -275,14 +280,17 @@ rm(impact_list)
 #Save the inclusion probabilities from each of the models.
 inclusion_prob_full <- setNames(mapply(inclusionProb, age_groups, impact_full, SIMPLIFY = FALSE), age_groups)
 inclusion_prob_time <- setNames(mapply(inclusionProb, age_groups, impact_time, SIMPLIFY = FALSE), age_groups)
+inclusion_prob_none <- setNames(mapply(inclusionProb, age_groups, impact_none, SIMPLIFY = FALSE), age_groups)
 
 #All model results combined
 quantiles_full <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
 quantiles_time <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_time[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
+quantiles_none <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_none[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
 
 #Model predicitons
 pred_quantiles_full <- sapply(quantiles_full, getPred, simplify = 'array')
 pred_quantiles_time <- sapply(quantiles_time, getPred, simplify = 'array')
+pred_quantiles_none <- sapply(quantiles_none, getPred, simplify = 'array')
 
 #Rolling rate ratios
 rr_roll_full <- sapply(quantiles_full, FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array')
@@ -291,15 +299,18 @@ rr_roll_time <- sapply(quantiles_time, FUN = function(quantiles_time) {quantiles
 #Rate ratios for evaluation period.
 rr_mean_full <- t(sapply(quantiles_full, getRR))
 rr_mean_time <- t(sapply(quantiles_time, getRR))
+rr_mean_none <- t(sapply(quantiles_none, getRR))
 
 rr_col_names <- c('Lower CI', 'Point Estimate', 'Upper CI')
 
 colnames(rr_mean_full) <- rr_col_names
 colnames(rr_mean_time) <- paste('ITS', rr_col_names)
+colnames(rr_mean_none) <- rr_col_names
 
 #Output the rate ratio estimates to a new file.
 write.csv(rr_mean_full, paste(output_directory, country, '_rr_full.csv', sep = ''))
 write.csv(rr_mean_time, paste(output_directory, country, '_rr_time_trend.csv', sep = ''))
+write.csv(rr_mean_none, paste(output_directory, country, '_rr_no_covars.csv', sep = ''), row.names = FALSE)
 write.csv(rr_roll_full, paste(output_directory, country, '_rr_roll_full.csv', sep = ''))
 write.csv(rr_roll_time, paste(output_directory, country, '_rr_roll_time.csv', sep = ''))
 
@@ -433,5 +444,5 @@ write.csv(sensitivity_table, paste(output_directory, country, '_sensitivity_tabl
 sensitivity_table <- read.csv(paste(output_directory, country, '_sensitivity_table.csv', sep = ''), check.names = FALSE, row.names = 1)
 rr_table <- cbind(rr_mean_time[!bad_sensitivity_analysis_age_groups, ], rr_table, sensitivity_table)
 write.csv(rr_table, paste(output_directory, country, '_rr_table.csv', sep = ''))
-return(list(groups = age_groups, sparse_groups = sparse_age_groups, output_directory = output_directory, time_points = time_points, post_period = post_period, outcome = outcome, outcome_plot = outcome_plot, pred_quantiles_full = pred_quantiles_full, pred_quantiles_time = pred_quantiles_time, rr_mean_full = rr_mean_full, rr_mean_time = rr_mean_time, sensitivity_table = sensitivity_table, pred_sensitivity = list(pred_2 = sensitivity_analysis_pred_2, pred_10 = sensitivity_analysis_pred_10)))
+return(list(groups = age_groups, sparse_groups = sparse_age_groups, output_directory = output_directory, time_points = time_points, post_period = post_period, outcome = outcome, outcome_plot = outcome_plot, impact_full = impact_full, pred_quantiles_full = pred_quantiles_full, pred_quantiles_time = pred_quantiles_time, pred_quantiles_none = pred_quantiles_none, rr_mean_full = rr_mean_full, rr_mean_time = rr_mean_time, rr_mean_none = rr_mean_none, sensitivity_table = sensitivity_table, pred_sensitivity = list(pred_2 = sensitivity_analysis_pred_2, pred_10 = sensitivity_analysis_pred_10)))
 }

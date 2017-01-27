@@ -11,7 +11,7 @@ logTransform <- function(factor_name, factor_value, date_name, all_cause_name, a
 	return(ds)
 }
 
-filterSparse <- function(dataset, threshold = 10) {
+filterSparse <- function(dataset, threshold = 5) {
 	return(dataset[, colMeans(dataset) > threshold, drop = FALSE])
 }
 
