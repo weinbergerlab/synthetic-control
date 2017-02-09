@@ -205,7 +205,7 @@ age_groups <- age_groups[!sparse_age_groups]
 covars <- setNames(lapply(ds, FUN = function(ds_group) {
 	if (country == 'Brazil') {
 		#Eliminates effects from 2008 coding change
-		covars <- ds_group[data_start:nrow(ds_group), 4:ncol(ds_group), , drop = FALSE]
+		covars <- ds_group[data_start:nrow(ds_group), 4:ncol(ds_group), drop = FALSE]
 		month_i <- as.factor(as.numeric(format(ds_group[, date_name][data_start:nrow(ds_group)], '%m')))
 		spline <- setNames(as.data.frame(bs(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
 		year_2008 <- numeric(nrow(covars))

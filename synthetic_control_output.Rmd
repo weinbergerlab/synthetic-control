@@ -2,7 +2,7 @@
 title: "Synthetic Controls"
 date: 'Report generated `r format(Sys.time(), "%A, %B %d, %Y")`'
 knit: (function(inputFile, encoding) { 
-      country <<- 'SC_Dec/Coverage groups';
+      country <<- 'SC_Dec/Region';
       out_dir <- paste(paste('~/Documents/Synthetic Control Data/', country, '/', sep = ''), 'results', sep = '');
       rmarkdown::render(inputFile,
                         encoding = encoding, 
@@ -24,7 +24,6 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ```{r analysis, include = FALSE}
 source('~/GitHub/synthetic-control/synthetic_control_analysis_function.R')
-original_country <- country
 results <- syntheticControl(country = country, use_defaults = TRUE)
 country <- gsub('/', '_', country)
 ```
