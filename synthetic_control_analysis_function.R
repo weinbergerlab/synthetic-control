@@ -13,7 +13,7 @@ library('lubridate', quietly = TRUE)
 library('CausalImpact', quietly = TRUE)
 source('synthetic_control_functions.R')
 
-checkArguments <- function(use_defaults, input_directory, file_name, all_cause_name, all_cause_pneu_name, intervention_date, eval_period) {
+checkArguments <- function(use_defaults, input_directory, file_name, all_cause_name = NULL, all_cause_pneu_name, intervention_date, eval_period) {
 	if (!use_defaults) {
 		if (is.null(input_directory)) {
 			stop('Missing argument for input_directory.')
@@ -21,16 +21,16 @@ checkArguments <- function(use_defaults, input_directory, file_name, all_cause_n
 		if (is.null(file_name)) {
 			stop('Missing argument for file_name.')
 		}
-		if (is.null(all_cause_name)) {
-			stop('Missing argument for all_cause_name.')
-		}
+		#if (is.null(all_cause_name)) {
+		#	stop('Missing argument for all_cause_name.')
+		#}
 		if (is.null(all_cause_pneu_name)) {
 			stop('Missing argument for all_cause_pneu_name.')
 		}
 		if (is.null(intervention_date)) {
 			stop('Missing argument for intervention_date.')
 		}
-		if (is.null()) {
+		if (is.null(eval_period)) {
 			stop('Missing argument for eval_period.')
 		}
 	}
@@ -83,7 +83,7 @@ file_name <- paste('prelog', country, 'processed', 'data.csv', sep = '_')
 pcv_file <- paste(input_directory, file_name, sep = '')
 ds1a <- read.csv(pcv_file, check.names = FALSE)
 colnames(ds1a) <- gsub('-', '_', colnames(ds1a))
-age_groups <- paste('Age Group', unique(unlist(ds1a$age_group, use.names = FALSE)))
+age_groups <- paste('Age Group', unique(unlist(ds1a[, factor_name], use.names = FALSE)))
 
 #Account for code-naming differences
 #all_cause_pneu_name - Gives the outcome variable (e.g. pneumonia) 
@@ -152,9 +152,11 @@ if (country == 'Brazil') {
 	}	
 
 	} else {
+		pre_period = NULL
+		post_period = NULL
 		pcv_file <- paste(input_directory, file_name, sep = '')
 		ds1a <- read.csv(pcv_file, check.names = FALSE)
-		age_groups <- paste('Age Group', unique(unlist(ds1a$age_group, use.names = FALSE)))
+		age_groups <- paste('Age Group', unique(unlist(ds1a[, factor_name], use.names = FALSE)))
 		if (is.null(data_start_date)) {
 			data_start_date <- min(as.Date(ds1a[, date_name]))
 		} else {
@@ -184,7 +186,7 @@ if (country == 'Brazil') {
 ds1a[, date_name] <- as.Date(ds1a[, date_name])
 
 #Log-transform all variables, adding 0.5 to counts of 0.
-ds <- setNames(lapply(unique(ds1a$age_group), FUN = logTransform, factor_name = factor_name, date_name = date_name, all_cause_name = all_cause_name, all_cause_pneu_name = all_cause_pneu_name, start_date = data_start_date, prelog_data = ds1a), age_groups)
+ds <- setNames(lapply(unique(ds1a[, factor_name]), FUN = logTransform, factor_name = factor_name, date_name = date_name, all_cause_name = all_cause_name, all_cause_pneu_name = all_cause_pneu_name, start_date = data_start_date, prelog_data = ds1a), age_groups)
 data_start <- match(data_start_date, ds[[1]][, date_name])
 time_points <- ds[[1]][, date_name][data_start:nrow(ds[[1]])]
 
