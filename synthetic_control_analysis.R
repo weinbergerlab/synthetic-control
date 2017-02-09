@@ -200,7 +200,7 @@ data_none <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,     
 #Start Cluster for CausalImpact (the main analysis function).
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
-clusterExport(cl, c('ds', 'doCausalImpact', 'intervention_date', 'time_points', 'n_seasons'), environment())
+clusterExport(cl, c('ds', 'doCausalImpact', 'impactExtract', 'intervention_date', 'time_points', 'n_seasons'), environment())
 
 impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), age_groups)
 impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), age_groups)
@@ -342,7 +342,7 @@ write.csv(rr_table_full, paste(output_directory, country, '_rr_table_full.csv', 
 #Start Cluster for Pred Sensitivity Analysis
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
-clusterExport(cl, c('doCausalImpact', 'predSensitivityAnalysis', 'inclusionProb', 'rrPredQuantiles', 'getPred', 'getRR', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
+clusterExport(cl, c('doCausalImpact', 'impactExtract', 'predSensitivityAnalysis', 'inclusionProb', 'rrPredQuantiles', 'getPred', 'getRR', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
 
 #Pred Sensitivity Analysis
 sensitivity_analysis_pred_2  <- t(parSapply(cl, age_groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, n_pred = 2))
@@ -366,7 +366,7 @@ age_groups <- age_groups[!bad_sensitivity_analysis_age_groups]
 #Start Cluster for Sensitivity Analysis
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
-clusterExport(cl, c('ds', 'doCausalImpact', 'weightSensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons'), environment())
+clusterExport(cl, c('ds', 'doCausalImpact', 'impactExtract', 'weightSensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons'), environment())
 
 #Weight Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
 sensitivity_analysis_full <- setNames(parLapply(cl, age_groups, weightSensitivityAnalysis, covars = covars, ds = ds, impact = impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons), age_groups)

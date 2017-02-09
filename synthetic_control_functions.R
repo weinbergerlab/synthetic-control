@@ -35,6 +35,19 @@ makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcom
 	return(ts)
 }
 
+impactExtract <- function(impact) {
+	burn <- SuggestBurn(0.1, impact$model$bsts.model)
+	#Posteriors
+	state_samples <- rowSums(aperm(impact$model$bsts.model$state.contributions[-(1:burn), , , drop = FALSE], c(1, 3, 2)), dims = 2)
+	sigma_obs <- impact$model$bsts.model$sigma.obs[-(1:burn)]
+	#Sample from posterior predictive density over data
+	obs_noise_samples <- matrix(rnorm(prod(dim(state_samples)), 0, sigma_obs), nrow = dim(state_samples)[1])
+	y_samples <- state_samples + obs_noise_samples
+	
+	inclusion_probs <- sort(colMeans(impact$model$bsts.model$coefficients != 0))
+	return(list(y_samples = y_samples, series = impact$series, inclusion_probs = inclusion_probs))
+}
+
 #Main analysis function.
 doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, n_pred = 5, n_iter = 10000, trend = FALSE) {
 	y <- zoo_data[, 1]
@@ -64,19 +77,50 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons, 
 	}
 	impact <- CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
 	colnames(impact$model$bsts.model$coefficients)[-1] <- names(zoo_data)[-1]
-	return(impact)
+	impact_extract <- impactExtract(impact)
+	#return(impact)
+	return(impact_extract)
 }
 
 #Save inclusion probabilities.
 inclusionProb <- function(age_group, impact) {
-	return(setNames(as.data.frame(colMeans(impact$model$bsts.model$coefficients != 0)), age_group))
+	#return(setNames(as.data.frame(colMeans(impact$model$bsts.model$coefficients != 0)), age_group))
+	return(setNames(as.data.frame(impact$inclusion_probs), age_group))
 }
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 rrPredQuantiles <- function(impact, all_cause_data, mean, sd, eval_period, post_period) {
+	pred_samples_post <- t(exp(impact$y_samples * sd + mean))
+	
+	plot_pred <- t(apply(pred_samples_post, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+	eval_indices <- match(eval_period[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	
+	pred_eval_sum <- colSums(pred_samples_post[eval_indices, ])
+	
+	eval_obs <- sum(exp((impact$series$response[eval_indices] * sd + mean)))
+	
+	eval_rr_sum <- eval_obs/pred_eval_sum
+	rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
+	mean_rr <- mean(eval_rr_sum)
+	
+	plot_rr_date_start <- post_period %m-% months(24)  
+	
+	roll_rr_indices <- match(plot_rr_date_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	obs_full <- exp(impact$series$response * sd + mean)
+	roll_sum_pred <- apply(pred_samples_post[roll_rr_indices, ], 2, rollsum, align = 'left', k = 12)
+	roll_sum_obs <- rollsum(obs_full[roll_rr_indices], align = 'left', k = 12)
+	roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
+	roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+	
+	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
+	return(quantiles)
+}
+
+#Estimate the rate ratios during the evaluation period and return to the original scale of the data.
+rrPredQuantilesOriginal <- function(impact, all_cause_data, mean, sd, eval_period, post_period) {
 	burn <- SuggestBurn(0.1, impact$model$bsts.model)
 	#Posteriors
-	state_samples <- rowSums(aperm(impact$model$bsts.model$state.contributions[-(1:burn),,, drop = FALSE], c(1, 3, 2)), dims = 2)
+	state_samples <- rowSums(aperm(impact$model$bsts.model$state.contributions[-(1:burn), , , drop = FALSE], c(1, 3, 2)), dims = 2)
 	sigma_obs <- impact$model$bsts.model$sigma.obs[-(1:burn)]
 	#Sample from posterior predictive density over data
 	obs_noise_samples <- matrix(rnorm(prod(dim(state_samples)), 0, sigma_obs), nrow = dim(state_samples)[1])
@@ -141,6 +185,33 @@ plotModel <- function(model, age_groups, min_max) {
 
 #Sensitivity analysis by dropping the top weighted covariates. 
 weightSensitivityAnalysis <- function(age_group, covars, ds, impact, time_points, intervention_date, n_seasons) {
+	par(mar = c(5, 4, 1, 2) + 0.1)
+	covar_df <- covars[[age_group]]
+	df <- ds[[age_group]]
+	
+	incl_prob <- impact[[age_group]]$inclusion_probs
+	max_var <- names(incl_prob)[length(incl_prob)]
+	max_prob <- incl_prob[length(incl_prob)]
+	sensitivity_analysis <- vector('list', 3)
+	
+	for (i in 1:3) {
+		df <- df[, names(df) != max_var]
+		covar_df <- covar_df[, names(covar_df) != max_var]
+		#Combine covars, outcome, date
+		zoo_data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
+		#print(zoo_data)
+		impact <- doCausalImpact(zoo_data, intervention_date, time_points, n_seasons)
+		
+		sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob, impact = impact)
+		incl_prob <- impact$inclusion_probs
+		max_var <- names(incl_prob)[length(incl_prob)]
+		max_prob <- incl_prob[length(incl_prob)]
+	}
+	return(sensitivity_analysis)
+}
+
+#Sensitivity analysis by dropping the top weighted covariates. 
+weightSensitivityAnalysisOriginal <- function(age_group, covars, ds, impact, time_points, intervention_date, n_seasons) {
 	par(mar = c(5, 4, 1, 2) + 0.1)
 	covar_df <- covars[[age_group]]
 	df <- ds[[age_group]]
