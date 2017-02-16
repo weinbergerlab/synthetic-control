@@ -2,6 +2,7 @@ library(shiny, quietly = TRUE)
 library(splines, quietly = TRUE)
 library(CausalImpact, quietly = TRUE)
 library(parallel, quietly = TRUE)
+library(RcppRoll, quietly = TRUE)
 source(file.path('R_scripts','processing_functions.R'))
 
 #Set max file size
@@ -10,10 +11,6 @@ n_cores <- detectCores()
 progress <- NULL
 value <- 0
 counter <- 0
-
-#TODO: Implement date handler for dates outside available range.
-#TODO: Possibly make executable to run app.
-#TODO: Eliminate 2008 adjustment (and maybe make it something more general).
 
 shinyServer(function(input, output, session) {
 	
@@ -52,7 +49,7 @@ shinyServer(function(input, output, session) {
 	ds <- reactive({
 		data_file <- input$in_file
 		if (is.null(data_file)) {return(NULL)}
-		data <- read.csv(data_file$datapath)
+		data <- read.csv(data_file$datapath, check.names = FALSE)
 		return(data)
 	})
 	observe({
@@ -85,7 +82,9 @@ shinyServer(function(input, output, session) {
 		updateSelectInput(session = session, inputId = 'covariate', choices = choices, selected = selected)
 	})
 	observeEvent(input$covariate, {
-		updateSelectInput(session = session, inputId = 'noj_denom', choices = input$covariate)
+		ds <- ds()
+		choices <- colnames(ds)[-c(match(c(input$age_group, input$date, input$variable), colnames(ds)))]
+		updateSelectInput(session = session, inputId = 'noj_denom', choices = choices)
 	})
 	
 	observeEvent(input$run_CausalImpact, {
@@ -114,6 +113,11 @@ shinyServer(function(input, output, session) {
 			end_date <- as.Date(reformatted_date[Position(function(date) {date >= locked_input()$eval_range[2]}, as.numeric(as.Date(reformatted_date)))])
 		}
 	})
+	post_period <- eventReactive(time_points(), {
+		time_points <- time_points()
+		intervention_date <- locked_input()$training_range[2]
+		c(time_points[which(abs(time_points - intervention_date) == min(abs(time_points[time_points >= intervention_date] - intervention_date)))], end_date())
+	})
 	time_points <- eventReactive(input$run_CausalImpact, {
 		ds <- ds()
 		reformatted_date <- reformatted_date()
@@ -127,7 +131,7 @@ shinyServer(function(input, output, session) {
 		ds <- ds()
 		ds[, locked_input()$date] <- reformatted_date()
 		age_groups <- locked_input()$age_group_selected
-		ds <- setNames(lapply(age_groups, FUN = logTransform, factor_name = locked_input()$age_group, date_name = locked_input()$date, prelog_data = ds, time_points = time_points()), age_groups())
+		ds <- setNames(lapply(age_groups, FUN = logTransform, factor_name = locked_input()$age_group, date_name = locked_input()$date, all_cause_name = locked_input()$noj_denom, all_cause_pneu_name = locked_input()$variable, start_date = start_date(), prelog_data = ds), age_groups())
 		return(ds)
 	})
 	covar_list <- eventReactive(ds_log(), {
@@ -251,13 +255,12 @@ shinyServer(function(input, output, session) {
 		progress$set(message = 'Running Selected Model.')
 		
 		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
+		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
 		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
 		
 		impact_full <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points), age_groups)
 		
 		stopCluster(cl)
-		
 		customIncProgress(amount = 0.2)
 		
 		return(impact_full)
@@ -271,7 +274,7 @@ shinyServer(function(input, output, session) {
 		progress$set(message = 'Running Time Trend Model.')
 		
 		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
+		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
 		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
 		
 		impact_time <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points, trend = TRUE), age_groups)
@@ -291,7 +294,7 @@ shinyServer(function(input, output, session) {
 		progress$set(message = 'Running Offset Model.')
 		
 		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
+		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
 		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
 		impact_offset <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points, offset = TRUE), age_groups)
 		stopCluster(cl)
@@ -312,9 +315,9 @@ shinyServer(function(input, output, session) {
 	})
 	
 	#Model results
-	quantiles_full   <- eventReactive(impact_full(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
-	quantiles_time   <- eventReactive(impact_time(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))}), age_groups())})
-	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()), offset = TRUE)}), age_groups())})
+	quantiles_full   <- eventReactive(impact_full(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period())}), age_groups())})
+	quantiles_time   <- eventReactive(impact_time(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period())}), age_groups())})
+	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period(), offset = TRUE)}), age_groups())})
 	
 	pred_quantiles_full   <- eventReactive(quantiles_full(),   {sapply(quantiles_full(),   getPred, simplify = 'array')})
 	pred_quantiles_time   <- eventReactive(quantiles_time(),   {sapply(quantiles_time(),   getPred, simplify = 'array')})
@@ -344,7 +347,7 @@ shinyServer(function(input, output, session) {
 			cumsum_cases_prevented_pre[,] <- 0
 			cumsum_cases_prevented <- rbind(cumsum_cases_prevented_pre, cumsum_cases_prevented_post)
 			plot_cumsum_prevented <- t(apply(cumsum_cases_prevented, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-		}, post_period = c(locked_input()$training_range[2] + 1, end_date()), quantiles = quantiles_full(), simplify = 'array')})
+		}, post_period = post_period(), quantiles = quantiles_full(), simplify = 'array')})
 	
 	sensitivity_analysis_full <- eventReactive(impact_full(), {
 		if (!run_sensitivity()) {counter <<- counter + 1; return(counter)}
@@ -359,7 +362,7 @@ shinyServer(function(input, output, session) {
 		progress$set(message = 'Running Sensitivity Analysis.')
 		
 		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
+		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
 		clusterExport(cl, c('ds', 'doCausalImpact', 'sensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points'), envir = environment())
 		
 		#Sensitivity Analysis
@@ -382,11 +385,11 @@ shinyServer(function(input, output, session) {
 		outcome_mean <- isolate(outcome_mean())
 		outcome_sd <- isolate(outcome_sd())
 		sapply(age_groups, FUN = function(age_group) {
-			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
+			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = post_period())
 			cred_int <- c(age_group, 'Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
 			names(cred_int)[1] <- locked_input()$age_group
 			cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = c(locked_input()$training_range[2], end_date()))
+				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = post_period())
 				cred_int <- c(round(rr_pred_quantile$mean_rr, 4), paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
 				names(cred_int) <- c(paste('Analysis', i), paste('Analysis', i, '.95'))
 				return(cred_int)
@@ -420,9 +423,9 @@ shinyServer(function(input, output, session) {
 			dates <- as.Date(as.character(ds[[age_group]][, locked_input()$date]))
 			tab <- tabPanel(
 				title = age_group, 
-				renderPlot(plotPred(data = pred_quantiles_full()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Full Synthetic Control Plot')),
-				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Interrupted Time Series Plot')),
-				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = c(locked_input()$training_range[2], end_date()), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Simple Pre-post Comparison Plot')),
+				renderPlot(plotPred(data = pred_quantiles_full()[, , age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Full Synthetic Control Plot')),
+				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Interrupted Time Series Plot')),
+				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Simple Pre-post Comparison Plot')),
 				renderPlot({matplot(rr_roll_full()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Synthetic controls: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
 				renderPlot({matplot(rr_roll_time()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Interupted time series: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
 				renderPlot(plot(impact_full()[[age_group]]$model$bsts.model, 'coefficients', main = age_group)),
@@ -446,10 +449,11 @@ shinyServer(function(input, output, session) {
 	})
 	output$tab_view <- renderUI({
 		age_groups <- age_groups()
-		if (length(age_groups) > 20) {
-			print('Too many factors - likely chose the wrong column.')
-			return(NULL)
-		} else if (length(age_groups) == 0) {return(NULL)}
+		#if (length(age_groups) > 20) {
+		#	print('Too many factors - likely chose the wrong column.')
+		#	return(NULL)
+		#} else if (length(age_groups) == 0) {return(NULL)}
+		if (length(age_groups) == 0) {return(NULL)}
 		tabs <- age_group_tabs()
 		if (!is.null(progress)) {
 			progress$set(value = 1.0)

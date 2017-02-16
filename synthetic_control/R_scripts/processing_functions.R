@@ -1,41 +1,27 @@
-library('date', quietly = TRUE)
+library('lubridate', quietly = TRUE)
 library('zoo', quietly = TRUE)
 library('lubridate', quietly = TRUE)
+library('RcppRoll', quietly = TRUE)
 library('CausalImpact', quietly = TRUE)
 
 formatDate <- function(time_points) {
-	time_points <- as.character(time_points)
-	day <- 0
-	month <- 0
-	year <- 0
-	#Separate date into components.
-	dates <- do.call(rbind, strsplit(time_points, '[[:punct:]]+|[[:space:]]+'))
-	class(dates) <- 'numeric'
-	#Identify position of day, month, and year
-	for (column in 1:ncol(dates)) {
-		if (isTRUE(all.equal(sort(unique(dates[, column])), 1:12))) {
-			month <- column
-		} else if (tail(sort(unique(dates[, column])), n = 1) > 31) {
-			year <- column
-		} else {
-			day <- column
-		}
-	}
+	time_points <- as_date(time_points)
 	#Rearrange date to YYYY-MM-DD format.
-	if (day == 0) {
-		dates <- as.Date(paste(dates[, year], dates[, month], 1, sep = '-'))
-	} else {
-		dates <- as.Date(paste(dates[, year], dates[, month], dates[, day], sep = '-'))
-	}
+	time_points <- as.Date(time_points, format = '%Y-%m-%d')
 }
 
-logTransform <- function(factor_name, factor_value, date_name, prelog_data, time_points) {
+logTransform <- function(factor_name, factor_value, date_name, all_cause_name, all_cause_pneu_name, start_date, prelog_data) {
 	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
+	ds <- ds[match(start_date, ds[, date_name]):nrow(ds), ]
+	ds <- cbind(ds[, colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name)], filterSparse(ds[, !(colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name))]))
 	ds[ds == 0] <- 0.5
 	ds[, !(colnames(ds) %in% c(factor_name, date_name))] <- log(ds[, !(colnames(ds) %in% c(factor_name, date_name))])
-	ds <- ds[which(as.Date(ds[, date_name]) %in% time_points), ]
 	return(ds)
+}
+
+filterSparse <- function(dataset, threshold = 5) {
+	return(dataset[, colMeans(dataset) > threshold, drop = FALSE])
 }
 
 getTrend <- function(covar_vector, data) {
@@ -56,9 +42,23 @@ makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcom
 	return(ts)
 }
 
-doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons = 12, trend = FALSE, offset = FALSE) {
-	n_iter = 2000
+impactExtract <- function(impact) {
+	burn <- SuggestBurn(0.1, impact$model$bsts.model)
+	#Posteriors
+	state_samples <- rowSums(aperm(impact$model$bsts.model$state.contributions[-(1:burn), , , drop = FALSE], c(1, 3, 2)), dims = 2)
+	sigma_obs <- impact$model$bsts.model$sigma.obs[-(1:burn)]
+	#Sample from posterior predictive density over data
+	obs_noise_samples <- matrix(rnorm(prod(dim(state_samples)), 0, sigma_obs), nrow = dim(state_samples)[1])
+	y_samples <- state_samples + obs_noise_samples
 	
+	inclusion_probs <- sort(colMeans(impact$model$bsts.model$coefficients != 0))
+	return(list(y_samples = y_samples, series = impact$series, inclusion_probs = inclusion_probs))
+}
+
+doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons = NULL, n_pred = 5, n_iter = 10000, trend = FALSE, offset = FALSE) {
+	if (is.null(n_seasons) || is.na(n_seasons)) {
+		n_seasons <- length(unique(month(time(zoo_data)))) #number of months
+	}
 	y <- zoo_data[, 1]
 	y[time_points >= as.Date(intervention_date)] <- NA
 	sd_limit <- sd(y)
@@ -78,19 +78,24 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 		bsts_model <- bsts(y, state.specification = ss, niter = n_iter, ping = 0, seed = 1)
 	} else if (trend){
 		x <- zoo_data[, -1] #Removes outcome column from dataset
-		bsts_model <- bsts(y~., data = x, state.specification = ss, prior.inclusion.probabilities = c(1.0,1.0), niter = n_iter,  ping = 0, seed = 1)	
+		bsts_model <- bsts(y~., data = x, state.specification = ss, prior.inclusion.probabilities = c(1.0,1.0), niter = n_iter, ping = 0, seed = 1)	
 	} else {
 		x <- zoo_data[, -1] #Removes outcome column from dataset
 		regression_prior_df <- 50
 		exp_r2 <- 0.8
-		n_pred <- max(ncol(x) / 2, 1)
 		bsts_model <- bsts(y~., data = x, state.specification = ss, niter = n_iter, expected.model.size = n_pred, prior.df = regression_prior_df, expected.r2 = exp_r2, ping = 0, seed = 1)	
 	}
-	CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
+	impact <- CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
+	return(impact)
+	#impact <- CausalImpact(bsts.model = bsts_model, post.period.response = post_period_response)
+	#colnames(impact$model$bsts.model$coefficients)[-1] <- names(zoo_data)[-1]
+	#impact_extract <- impactExtract(impact)
+	#return(impact_extract)
 }
 
 inclusionProb <- function(age_group, impact) {
 	return(setNames(as.data.frame(colMeans(impact$model$bsts.model$coefficients != 0)), age_group))
+	#return(setNames(as.data.frame(impact$inclusion_probs), age_group))
 }
 
 rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period, post_period, offset = FALSE) {
@@ -118,8 +123,7 @@ rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period
 	rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
 	mean_rr <- mean(eval_rr_sum)
 	
-	plot_rr_date_start <- post_period %m-% months(24)  
-	
+	plot_rr_date_start <- post_period %m-% months(24)
 	roll_rr_indices <- match(plot_rr_date_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
 	obs_full <- exp(impact$series$response * sd + mean)
 	roll_sum_pred <- apply(pred_samples_post[roll_rr_indices, ], 2, rollsum, align = 'left', k = 12)

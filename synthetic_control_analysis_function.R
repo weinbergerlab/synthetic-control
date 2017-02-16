@@ -9,7 +9,9 @@
 
 library('parallel', quietly = TRUE)
 library('splines', quietly = TRUE)
+library('zoo', quietly = TRUE)
 library('lubridate', quietly = TRUE)
+library('RcppRoll', quietly = TRUE)
 library('CausalImpact', quietly = TRUE)
 source('synthetic_control_functions.R')
 
@@ -76,7 +78,7 @@ syntheticControl <- function(
 
 #Load file (.csv format). You can change the input and output directories to point to an appropriate spot on your computer.
 input_directory <- paste('~/Documents/Synthetic Control Data/', country, '/', sep = '')
-		country <- gsub('/', '_', country)
+country <- gsub('/', '_', country)
 output_directory <- paste(input_directory, 'results/', sep = '')
 dir.create(output_directory, showWarnings = FALSE)
 file_name <- paste('prelog', country, 'processed', 'data.csv', sep = '_')
@@ -241,6 +243,7 @@ outcome_plot <- exp(t(t(outcome) * outcome_sd + outcome_mean))
 outcome_offset <- sapply(ds, FUN = function(data) {data[, all_cause_pneu_name] - data[, all_cause_name]})
 outcome_offset_mean <- colMeans(outcome_offset)
 outcome_offset_sd <- sapply(ds, FUN = function(data) {sd(data[, all_cause_pneu_name] - data[, all_cause_name])})
+outcome_offset_plot <- exp(t(t(scale(outcome_offset)) * outcome_sd + outcome_mean))
 
 #Combine the outcome, covariates, and time point information.
 data_full <- setNames(lapply(age_groups, makeTimeSeries, outcome = outcome,        covars = covars,      time_points = time_points, scale_outcome = FALSE), age_groups)
@@ -283,9 +286,9 @@ inclusion_prob_time <- setNames(mapply(inclusionProb, age_groups, impact_time, S
 inclusion_prob_none <- setNames(mapply(inclusionProb, age_groups, impact_none, SIMPLIFY = FALSE), age_groups)
 
 #All model results combined
-quantiles_full <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
-quantiles_time <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_time[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
-quantiles_none <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_none[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)}), age_groups)
+quantiles_full <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group],        sd = outcome_sd[age_group],        eval_period = eval_period, post_period = post_period)}), age_groups)
+quantiles_time <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_time[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_offset_mean[age_group], sd = outcome_offset_sd[age_group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), age_groups)
+quantiles_none <- setNames(lapply(age_groups, FUN = function(age_group) {rrPredQuantiles(impact = impact_none[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group],        sd = outcome_sd[age_group],        eval_period = eval_period, post_period = post_period)}), age_groups)
 
 #Model predicitons
 pred_quantiles_full <- sapply(quantiles_full, getPred, simplify = 'array')
@@ -357,8 +360,8 @@ invisible(lapply(age_groups, FUN = function(age_group) {
 	
 	#Plot predictions
 	par(mfrow = c(3, 1))
-	plotPred(pred_quantiles_full[, , age_group], time_points, post_period, pred_quantiles_full[, , age_group], outcome_plot[, age_group], country, title = paste(age_group, 'Synthetic controls estimate'))
-	plotPred(pred_quantiles_time[, , age_group], time_points, post_period, pred_quantiles_full[, , age_group], outcome_plot[, age_group], country, title = paste(age_group, 'Interupted time series estimate'))
+	plotPred(pred_quantiles_full[, , age_group], time_points, post_period, pred_quantiles_full[, , age_group], outcome_plot[, age_group],        country, title = paste(age_group, 'Synthetic controls estimate'))
+	plotPred(pred_quantiles_time[, , age_group], time_points, post_period, pred_quantiles_full[, , age_group], outcome_offset_plot[, age_group], country, title = paste(age_group, 'Interupted time series estimate'))
 	par(par_defaults)
 	
 	#Rolling rate ratio
@@ -397,7 +400,7 @@ write.csv(rr_table_full, paste(output_directory, country, '_rr_table_full.csv', 
 
 #Start Cluster for Pred Sensitivity Analysis
 cl <- makeCluster(n_cores)
-clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
+clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
 clusterExport(cl, c('doCausalImpact', 'impactExtract', 'predSensitivityAnalysis', 'inclusionProb', 'rrPredQuantiles', 'getPred', 'getRR', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
 
 #Pred Sensitivity Analysis
@@ -421,13 +424,21 @@ age_groups <- age_groups[!bad_sensitivity_analysis_age_groups]
 
 #Start Cluster for Sensitivity Analysis
 cl <- makeCluster(n_cores)
-clusterEvalQ(cl, library(CausalImpact, quietly = TRUE))
-clusterExport(cl, c('ds', 'doCausalImpact', 'impactExtract', 'weightSensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons'), environment())
+clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
+clusterExport(cl, c('ds', 'doCausalImpact', 'impactExtract', 'weightSensitivityAnalysis', 'rrPredQuantiles', 'age_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
 
 #Weight Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
-sensitivity_analysis_full <- setNames(parLapply(cl, age_groups, weightSensitivityAnalysis, covars = covars, ds = ds, impact = impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons), age_groups)
+sensitivity_analysis_full <- setNames(parLapply(cl, age_groups, weightSensitivityAnalysis, covars = covars, ds = ds, impact = impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, mean = outcome_mean, sd = outcome_sd, eval_period = eval_period, post_period = post_period), age_groups)
 
 stopCluster(cl)
+
+sensitivity_pred_quantiles  <- lapply(sensitivity_analysis_full, FUN = function(sensitivity_analysis) {
+	plot_pred_list <- vector(mode = 'list', length = length(sensitivity_analysis))
+	for (sensitivity_index in 1:length(sensitivity_analysis)) {
+		plot_pred_list[[sensitivity_index]] <- getPred(sensitivity_analysis[[sensitivity_index]])
+	}
+	return(plot_pred_list)
+})
 
 #Sensitivity Analysis 1 Model results
 impact_sensitivity_analysis_1_full <- lapply(sensitivity_analysis_full, function(sensitivity_analysis) {sensitivity_analysis[[1]]$impact})
@@ -439,10 +450,11 @@ write.csv(rr_mean_sensitivity_analysis_1_full, paste(output_directory, country, 
 
 #Table of rate ratios for each sensitivity analysis level
 rr_table <- t(sapply(age_groups, rrTable, impact = impact_full, outcome_mean = outcome_mean, outcome_sd = outcome_sd, eval_period = eval_period, post_period = post_period))
-sensitivity_table <- t(sapply(age_groups, sensitivityTable, sensitivity_analysis = sensitivity_analysis_full))
+sensitivity_table <- t(sapply(age_groups, sensitivityTable, sensitivity_analysis = sensitivity_analysis_full, original_rr = rr_mean_full))
 write.csv(sensitivity_table, paste(output_directory, country, '_sensitivity_table.csv', sep = ''))
 sensitivity_table <- read.csv(paste(output_directory, country, '_sensitivity_table.csv', sep = ''), check.names = FALSE, row.names = 1)
+sensitivity_table[, sapply(sensitivity_table, is.numeric)] <- round(sensitivity_table[, sapply(sensitivity_table, is.numeric)], 4)
 rr_table <- cbind(rr_mean_time[!bad_sensitivity_analysis_age_groups, ], rr_table, sensitivity_table)
 write.csv(rr_table, paste(output_directory, country, '_rr_table.csv', sep = ''))
-return(list(groups = age_groups, sparse_groups = sparse_age_groups, output_directory = output_directory, time_points = time_points, post_period = post_period, outcome = outcome, outcome_plot = outcome_plot, impact_full = impact_full, pred_quantiles_full = pred_quantiles_full, pred_quantiles_time = pred_quantiles_time, pred_quantiles_none = pred_quantiles_none, rr_mean_full = rr_mean_full, rr_mean_time = rr_mean_time, rr_mean_none = rr_mean_none, sensitivity_table = sensitivity_table, pred_sensitivity = list(pred_2 = sensitivity_analysis_pred_2, pred_10 = sensitivity_analysis_pred_10)))
+return(list(groups = age_groups, sparse_groups = sparse_age_groups, output_directory = output_directory, time_points = time_points, post_period = post_period, outcome = outcome, outcome_plot = outcome_plot, outcome_offset_plot = outcome_offset_plot, impact_full = impact_full, pred_quantiles_full = pred_quantiles_full, pred_quantiles_time = pred_quantiles_time, pred_quantiles_none = pred_quantiles_none, rr_mean_full = rr_mean_full, rr_mean_time = rr_mean_time, rr_mean_none = rr_mean_none, sensitivity_pred_quantiles = sensitivity_pred_quantiles, sensitivity_table = sensitivity_table, pred_sensitivity = list(pred_2 = sensitivity_analysis_pred_2, pred_10 = sensitivity_analysis_pred_10)))
 }
