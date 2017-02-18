@@ -1,42 +1,56 @@
 #This is the function file. It is called directly from the analysis file.
-
-packageHandler <- function(packages, update_packages = TRUE) {
+packageHandler <- function(packages, update_packages = TRUE, install_packages = TRUE) {
 	bad_packages <- list()
 	for (package in packages) {
-		tryCatch({
-			find.package(package)
-		}, error = function(e) {
-			if (package == 'CausalImpact') {
-				packageHandler('devtools')
-				CI_desc <- do.call(rbind, strsplit(readLines('https://raw.githubusercontent.com/google/CausalImpact/master/DESCRIPTION'), split = ': '))
-				rownames(CI_desc) <- CI_desc[, 1]
-				CI_desc <- as.list(CI_desc[c('Package', 'Date', 'Copyright', 'Version', 'License', 'Imports', 'Depends', 'Suggests'), -1], rownames(CI_desc))
-				CI_desc[c('Imports', 'Depends', 'Suggests')] <- lapply(CI_desc[c('Imports', 'Depends', 'Suggests')], FUN = function(string) {strsplit(string, split = ', ')[[1]]})
-				sapply(c(CI_desc$Imports, CI_desc$Depends, CI_desc$Suggests), FUN = packageHandler, update_packages = update_packages)
-				devtools::install_github('google/CausalImpact')
-			} else {
-				if (package %in% available.packages()) {
-					install.packages(package)
-				} else {
-					bad_packages <<- append(bad_packages, package)
-				}
-			}
-		}, warning = function(w) {
-			paste(w, 'Shouldn\'t be here.')
-		}, finally = {
-			if (update_packages) {
+		if (install_packages) {
+			tryCatch({
+				find.package(package)
+			}, error = function(e) {
 				if (package == 'CausalImpact') {
+					packageHandler('devtools', update_packages, install_packages)
 					CI_desc <- do.call(rbind, strsplit(readLines('https://raw.githubusercontent.com/google/CausalImpact/master/DESCRIPTION'), split = ': '))
 					rownames(CI_desc) <- CI_desc[, 1]
 					CI_desc <- as.list(CI_desc[c('Package', 'Date', 'Copyright', 'Version', 'License', 'Imports', 'Depends', 'Suggests'), -1], rownames(CI_desc))
-					if (packageVersion('CausalImpact') != CI_desc$Version) {
-						devtools::install_github('google/CausalImpact')
+					CI_desc[c('Imports', 'Depends', 'Suggests')] <- lapply(CI_desc[c('Imports', 'Depends', 'Suggests')], FUN = function(string) {strsplit(string, split = ', ')[[1]]})
+					packageHandler(c(CI_desc$Imports, CI_desc$Depends, CI_desc$Suggests), update_packages, install_packages)
+					#sapply(c(CI_desc$Imports, CI_desc$Depends, CI_desc$Suggests), FUN = packageHandler, update_packages = update_packages, install_packages = install_packages)
+					devtools::install_github('google/CausalImpact')
+				} else if (package == 'pandoc') {
+					packageHandler(c('installr', 'rmarkdown'), update_packages, install_packages)
+					if (!rmarkdown::pandoc_available()) {
+						installr::install.pandoc()
 					}
 				} else {
-					update.packages(package)
-				}	
-			}
-		})
+					if (package %in% available.packages()) {
+						install.packages(package, repos = 'http://cran.rstudio.com/')
+					} else {
+						bad_packages <<- append(bad_packages, package)
+					}
+				}
+			}, warning = function(w) {
+				paste(w, 'Shouldn\'t be here.')
+			}, finally = {
+				if (update_packages) {
+					if (package == 'CausalImpact') {
+						CI_desc <- do.call(rbind, strsplit(readLines('https://raw.githubusercontent.com/google/CausalImpact/master/DESCRIPTION'), split = ': '))
+						rownames(CI_desc) <- CI_desc[, 1]
+						CI_desc <- as.list(CI_desc[c('Package', 'Date', 'Copyright', 'Version', 'License', 'Imports', 'Depends', 'Suggests'), -1], rownames(CI_desc))
+						if (packageVersion('CausalImpact') != CI_desc$Version) {
+							devtools::install_github('google/CausalImpact')
+						}
+					} else if (package == 'pandoc') {
+						packageHandler(c('installr', 'rmarkdown', 'jsonlite'), update_packages, install_packages)
+						current_version <- jsonlite::fromJSON('https://api.github.com/repos/jgm/pandoc/releases')$tag_name[1]
+						computer_version <- rmarkdown::pandoc_version()
+						if (computer_version != current_version) {
+							installr::install.pandoc()
+						}
+					} else {
+						update.packages(package, repos = 'http://cran.rstudio.com/')
+					}	
+				}
+			})
+		}
 	}
 	if (length(bad_packages) > 0) {
 		if (length(bad_packages) == 1) {
@@ -48,15 +62,19 @@ packageHandler <- function(packages, update_packages = TRUE) {
 	return()
 }
 
-#Log-transform the data.
-logTransform <- function(factor_name, factor_value, date_name, all_cause_name, all_cause_pneu_name, start_date, prelog_data) {
-	ds <- prelog_data[prelog_data[, factor_name] == factor_value, ]
+splitGroup <- function(ungrouped_data, group_name, group, date_name, start_date, end_date, no_filter = NULL) {
+	ds <- ungrouped_data[ungrouped_data[, group_name] == group, ]
 	ds <- ds[, colSums(is.na(ds)) == 0]
-	ds <- ds[match(start_date, ds[, date_name]):nrow(ds), ]
-	ds <- cbind(ds[, colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name)], filterSparse(ds[, !(colnames(ds) %in% c(factor_name, date_name, all_cause_name, all_cause_pneu_name))]))
-	ds[ds == 0] <- 0.5
-	ds[, !(colnames(ds) %in% c(factor_name, date_name))] <- log(ds[, !(colnames(ds) %in% c(factor_name, date_name))])
+	ds <- ds[match(start_date, ds[, date_name]):match(end_date, ds[, date_name]), ]
+	ds <- cbind(ds[, colnames(ds) %in% no_filter], filterSparse(ds[, !(colnames(ds) %in% no_filter)]))
 	return(ds)
+}
+
+#Log-transform the data.
+logTransform <- function(prelog_data, no_log = NULL) {
+	prelog_data[prelog_data == 0] <- 0.5
+	prelog_data[, !(colnames(prelog_data) %in% no_log)] <- log(prelog_data[, !(colnames(prelog_data) %in% no_log)])
+	return(prelog_data)
 }
 
 filterSparse <- function(dataset, threshold = 5) {
@@ -73,14 +91,30 @@ getTrend <- function(covar_vector, data) {
 	return(trend)
 }
 
-#Combine the outcome and covariates.
-makeTimeSeries <- function(age_group, outcome, covars, time_points, scale_outcome) {
-	if (scale_outcome) {
-		ts <- zoo(cbind(outcome = scale(outcome[, age_group]), covars[[age_group]]), time_points)
+makeCovars <- function(ds_group, code_change, intervention_date, time_points) {
+	if (code_change) {
+		#Eliminates effects from 2008 coding change
+		covars <- ds_group[, 4:ncol(ds_group)]
+		month_i <- as.factor(as.numeric(format(time_points, '%m')))
+		spline <- setNames(as.data.frame(bs(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
+		year_2008 <- numeric(nrow(covars))
+		year_2008[1:nrow(covars) >= match(as.Date('2008-01-01'), time_points)] <- 1
+		data <- cbind.data.frame(year_2008, spline, month_i)
+		trend <- lapply(covars, getTrend, data = data)
+		covars <- covars - trend
 	} else {
-		ts <- zoo(cbind(outcome = outcome[, age_group], covars[[age_group]]), time_points)
+		covars <- ds_group[, 4:ncol(ds_group), drop = FALSE]
 	}
-	return(ts)
+	if (intervention_date > as.Date('2009-09-01')) {
+		covars$pandemic <- ifelse(time_points == '2009-08-01', 1, ifelse(time_points == '2009-09-01', 1, 0))
+	}
+	covars <- as.data.frame(lapply(covars[, apply(covars, 2, var) != 0, drop = FALSE], scale), check.names = FALSE)
+	return(covars)
+}
+
+#Combine the outcome and covariates.
+makeTimeSeries <- function(group, outcome, covars, time_points) {
+	return(zoo(cbind(outcome = outcome[, group], covars[[group]]), time_points))
 }
 
 impactExtract <- function(impact) {
@@ -106,16 +140,16 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 	sd_limit <- sd(y)
 	sd <- sd(y, na.rm = TRUE)
 	mean <- mean(y, na.rm = TRUE)
-
+	
 	post_period_response <- zoo_data[, 1]
 	post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
-
+	
 	sigma_prior_guess <- 1e-6
 	prior_sample_size <- 1e6
 	ss <- NA
 	ss <- AddSeasonal(list(), y, nseasons = n_seasons, sigma.prior = SdPrior(sigma.guess = sigma_prior_guess, sample.size = prior_sample_size, upper.limit = sd_limit))
 	ss <- AddLocalLevel(ss, y, sigma.prior = SdPrior(sigma.guess = sigma_prior_guess, sample.size = prior_sample_size, upper.limit = sd_limit), initial.state.prior = NormalPrior(mean, sd))
-
+	
 	if (trend) {
 		x <- zoo_data[, -1] #Removes outcome column from dataset
 		bsts_model <- bsts(y~., data = x, state.specification = ss, prior.inclusion.probabilities = c(1.0, 1.0), niter = n_iter, ping = 0, seed = 1)	
@@ -132,50 +166,51 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 }
 
 #Save inclusion probabilities.
-inclusionProb <- function(age_group, impact) {
-	return(setNames(as.data.frame(impact$inclusion_probs), age_group))
+inclusionProb <- function(impact) {
+	return(impact$inclusion_probs)
 }
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
-rrPredQuantiles <- function(impact, all_cause_data = NULL, mean, sd, eval_period, post_period, trend = FALSE) {
+rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, post_period, trend = FALSE) {
 	if (trend) {
-		pred_samples_post <- exp(all_cause_data) * t(exp(impact$y_samples * sd + mean))
+		pred_samples <- exp(denom_data) * t(exp(impact$y_samples * sd + mean))
 	} else {
-		pred_samples_post <- t(exp(impact$y_samples * sd + mean))	
+		pred_samples <- t(exp(impact$y_samples * sd + mean))	
 	}
 	
-	plot_pred <- t(apply(pred_samples_post, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+	pred <- t(apply(pred_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
 	eval_indices <- match(eval_period[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
 	
-	pred_eval_sum <- colSums(pred_samples_post[eval_indices, ])
+	pred_eval_sum <- colSums(pred_samples[eval_indices, ])
 	
 	if (trend) {
-		eval_obs <- sum((exp(all_cause_data) * exp(impact$series$response * sd + mean))[eval_indices])
+		eval_obs <- sum((exp(denom_data) * exp(impact$series$response * sd + mean))[eval_indices])
 	} else {
 		eval_obs <- sum(exp((impact$series$response[eval_indices] * sd + mean)))	
 	}
 	
 	eval_rr_sum <- eval_obs/pred_eval_sum
 	rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
+	names(rr) <- c('Lower CI', 'Point Estimate', 'Upper CI')
 	mean_rr <- mean(eval_rr_sum)
 	
-	plot_rr_date_start <- post_period %m-% months(24)
-	roll_rr_indices <- match(plot_rr_date_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
+	plot_rr_start <- post_period %m-% months(24)
+	roll_rr_indices <- match(plot_rr_start[1], index(impact$series$response)):match(eval_period[2], index(impact$series$response))
 	if (trend) {
-		obs_full <- exp(all_cause_data) * exp(impact$series$response * sd + mean)
+		obs_full <- exp(denom_data) * exp(impact$series$response * sd + mean)
 	} else {
 		obs_full <- exp(impact$series$response * sd + mean)
 	}
-	roll_sum_pred <- roll_sum(pred_samples_post[roll_rr_indices, ], 12)
+	roll_sum_pred <- roll_sum(pred_samples[roll_rr_indices, ], 12)
 	roll_sum_obs <- roll_sum(obs_full[roll_rr_indices], 12)
 	roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
 	roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-	quantiles <- list(pred_samples_post_full = pred_samples_post, plot_pred = plot_pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
+	quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
 	return(quantiles)
 }
 
 getPred <- function(quantiles) {
-	return(quantiles$plot_pred)
+	return(quantiles$pred)
 }
 
 getRR <- function(quantiles) {
@@ -183,21 +218,22 @@ getRR <- function(quantiles) {
 }
 
 #Plot predictions.
-plotPred <- function(pred_quantiles, time_points, post_period, pred_quantiles_full, outcome_plot, country, title = NULL, sensitivity_pred_quantiles = NULL, sensitivity_title = 'Sensitivity Plots') {
+plotPred <- function(pred_quantiles = NULL, time_points, post_period, pred_quantiles_full, outcome_plot, code_change, title = NULL, sensitivity_pred_quantiles = NULL, sensitivity_title = 'Sensitivity Plots') {
 	
 	post_period_start <- which(time_points == post_period[1]) 
 	post_period_end <- which(time_points == post_period[2])
 	min_plot <- min(c(pred_quantiles_full, outcome_plot))
 	max_plot <- max(c(pred_quantiles_full, outcome_plot))
 	
-	xx <- c(time_points[post_period_start:post_period_end], rev(time_points[post_period_start:post_period_end]))
-	ci_poly <- c(pred_quantiles[post_period_start:post_period_end, 1], rev(pred_quantiles[post_period_start:post_period_end, 3]))
-	plot(time_points, pred_quantiles[, 2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot), main = title, xlab = 'Time', ylab = 'Number of Cases')
-	polygon(xx, ci_poly, lty = 0, col = 'lightgray')
-	points(time_points, pred_quantiles[, 2], type = 'l', col = 'white', lty = 2)
-	points(time_points, outcome_plot, type = 'l', col = 'black', lwd = 2)
-	if (country == 'Brazil') {abline(v = as.Date('2008-01-01'), lty = 2)}
-	#abline(v = as.Date('2012-05-01'), lty = 2, col = 'lightgray') #pcv13
+	if (!(is.null(pred_quantiles))) {
+		xx <- c(time_points[post_period_start:post_period_end], rev(time_points[post_period_start:post_period_end]))
+		ci_poly <- c(pred_quantiles[post_period_start:post_period_end, 1], rev(pred_quantiles[post_period_start:post_period_end, 3]))
+		plot(time_points, pred_quantiles[, 2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot), main = title, xlab = 'Time', ylab = 'Number of Cases')
+		polygon(xx, ci_poly, lty = 0, col = 'lightgray')
+		points(time_points, pred_quantiles[, 2], type = 'l', col = 'white', lty = 2)
+		points(time_points, outcome_plot, type = 'l', col = 'black', lwd = 2)
+		if (code_change) {abline(v = as.Date('2008-01-01'), lty = 2)}	
+	}
 	
 	if (!is.null(sensitivity_pred_quantiles) && length(sensitivity_pred_quantiles) == 3) {
 		plot(time_points, pred_quantiles[, 2], type = 'l', col = 'darkgray', lwd = 1, bty = 'l', ylim = c(min_plot, max_plot), main = sensitivity_title, xlab = 'Time', ylab = 'Number of Cases')
@@ -222,19 +258,20 @@ plotPred <- function(pred_quantiles, time_points, post_period, pred_quantiles_fu
 	}
 }
 
-plotModel <- function(model, age_groups, min_max) {
-	plot(1:length(age_groups), model[1:length(age_groups), 'Point Estimate'], bty = 'l', ylim = c(min(min_max), max(min_max)))
-	arrows(1:length(age_groups), model[1:length(age_groups), 'Lower CI'], 1:length(age_groups), model[, 'Upper CI'], code = 3, angle = 90, length = 0.0)
+plotModel <- function(model, groups, min_max, ylab = 'Logarithm of Rate Ratio', title = 'Logarithm of Rate Ratio for each Group') {
+	plot(as.factor(groups), model[1:length(groups), 'Point Estimate'], bty = 'l', ylab = ylab, ylim = c(min(min_max), max(min_max)), xaxt = 'n', main = title)
+	arrows(1:length(groups), model[1:length(groups), 'Lower CI'], 1:length(groups), model[, 'Upper CI'], code = 3, angle = 90, length = 0.0)
 	abline(h = 0)
+	axis(1, at = as.factor(groups), labels = groups, las = 3)
 }
 
 #Sensitivity analysis by dropping the top weighted covariates. 
-weightSensitivityAnalysis <- function(age_group, covars, ds, impact, time_points, intervention_date, n_seasons, mean = NULL, sd = NULL, eval_period = NULL, post_period = NULL) {
+weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, intervention_date, n_seasons, mean = NULL, sd = NULL, eval_period = NULL, post_period = NULL) {
 	par(mar = c(5, 4, 1, 2) + 0.1)
-	covar_df <- covars[[age_group]]
-	df <- ds[[age_group]]
+	covar_df <- covars[[group]]
+	df <- ds[[group]]
 	
-	incl_prob <- impact[[age_group]]$inclusion_probs
+	incl_prob <- impact[[group]]$inclusion_probs
 	max_var <- names(incl_prob)[length(incl_prob)]
 	max_prob <- incl_prob[length(incl_prob)]
 	sensitivity_analysis <- vector('list', 3)
@@ -243,16 +280,14 @@ weightSensitivityAnalysis <- function(age_group, covars, ds, impact, time_points
 		df <- df[, names(df) != max_var]
 		covar_df <- covar_df[, names(covar_df) != max_var]
 		#Combine covars, outcome, date
-		zoo_data <- zoo(cbind(outcome = outcome[, age_group], covar_df), time_points)
+		zoo_data <- zoo(cbind(outcome = outcome[, group], covar_df), time_points)
 		impact <- doCausalImpact(zoo_data, intervention_date, time_points, n_seasons)
-
+		
 		sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob, impact = impact)
 		if (!is.null(mean) && !is.null(sd) && !is.null(eval_period) && !is.null(post_period)) {
-			quantiles <- rrPredQuantiles(impact = sensitivity_analysis[[i]]$impact, mean = mean[age_group], sd = sd[age_group], eval_period = eval_period, post_period = post_period)
+			quantiles <- rrPredQuantiles(impact = sensitivity_analysis[[i]]$impact, mean = mean[group], sd = sd[group], eval_period = eval_period, post_period = post_period)
 			sensitivity_analysis[[i]]$rr <- quantiles$rr
-			sensitivity_analysis[[i]]$plot_pred <- quantiles$plot_pred
-			names(sensitivity_analysis[[i]]$rr) <- c('Lower CI', 'Point Estimate', 'Upper CI')
-			print(sensitivity_analysis[[i]]$rr)
+			sensitivity_analysis[[i]]$pred <- quantiles$pred
 		}
 		
 		incl_prob <- impact$inclusion_probs
@@ -264,30 +299,18 @@ weightSensitivityAnalysis <- function(age_group, covars, ds, impact, time_points
 
 predSensitivityAnalysis <- function(group, ds, zoo_data, intervention_date, time_points, n_seasons, n_pred) {
 	impact <- doCausalImpact(zoo_data[[group]], intervention_date, time_points, n_seasons, n_pred = n_pred)
-	quantiles <- lapply(group, FUN = function(group) {rrPredQuantiles(impact = impact, all_cause_data = ds[[group]][, all_cause_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)})
+	quantiles <- lapply(group, FUN = function(group) {rrPredQuantiles(impact = impact, denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)})
 	pred_quantiles_pred <- sapply(quantiles, getPred, simplify = 'array')
-	
 	rr_mean <- t(sapply(quantiles, getRR))
-	rr_col_names <- c('Lower CI', 'Point Estimate', 'Upper CI')
-	colnames(rr_mean) <- rr_col_names
-	
 	return(rr_mean)
 }
 
-rrTable <- function(age_group, impact, outcome_mean, outcome_sd, eval_period, post_period) {
-	rr_pred_quantile <- rrPredQuantiles(impact = impact[[age_group]], all_cause_data = ds[[age_group]][, all_cause_name], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = eval_period, post_period = post_period)
-	cred_int <- c(rr_pred_quantile$rr[1], rr_pred_quantile$rr[2], rr_pred_quantile$rr[3])
-	rr_col_names <- c('Lower CI', 'Point Estimate', 'Upper CI')
-	names(cred_int) <- paste('SC', rr_col_names)
-	return(cred_int)
-}
-
-sensitivityTable <- function(age_group, sensitivity_analysis, original_rr = NULL) {
-	top_controls <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-		top_control <- c(sensitivity_analysis[[age_group]][[i]]$removed_var, sensitivity_analysis[[age_group]][[i]]$removed_prob, sensitivity_analysis[[age_group]][[i]]$rr)
-		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i), paste(names(sensitivity_analysis[[age_group]][[i]]$rr), i))
+sensitivityTable <- function(group, sensitivity_analysis, original_rr = NULL) {
+	top_controls <- lapply(1:length(sensitivity_analysis[[group]]), FUN = function(i) {
+		top_control <- c(sensitivity_analysis[[group]][[i]]$removed_var, sensitivity_analysis[[group]][[i]]$removed_prob, sensitivity_analysis[[group]][[i]]$rr)
+		names(top_control) <- c(paste('Top Control', i), paste('Inclusion Probability of Control', i), paste(names(sensitivity_analysis[[group]][[i]]$rr), i))
 		return(top_control)
 	})
-	sensitivity_table <- c(original_rr[age_group, ], c(top_controls, recursive = TRUE))
+	sensitivity_table <- c(original_rr[group, ], c(top_controls, recursive = TRUE))
 	return(sensitivity_table)
 }
