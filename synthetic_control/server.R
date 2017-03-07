@@ -1,29 +1,20 @@
 library(shiny, quietly = TRUE)
 library(splines, quietly = TRUE)
+library(lubridate, quietly = TRUE)
 library(CausalImpact, quietly = TRUE)
 library(parallel, quietly = TRUE)
 library(RcppRoll, quietly = TRUE)
-source(file.path('R_scripts','processing_functions.R'))
+library(reshape, quietly = TRUE)
+library(zoo, quietly = TRUE)
+library(ggplot2, quietly = TRUE)
+source('synthetic_control_functions.R')
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
 n_cores <- detectCores()
-progress <- NULL
-value <- 0
-counter <- 0
 
 shinyServer(function(input, output, session) {
 	
-	output$download_preprocesser <- downloadHandler(
-		filename = function() {file_name <- 'sample_preprocessing.R'},
-		content = function(file) {file.copy('./downloads/sample_preprocessing.R', file)},
-		contentType = 'application/R'
-	)
-	output$download_sample <- downloadHandler(
-		filename <- function() {file_name <- 'example_data.csv'},
-		content <- function(file) {file.copy('./downloads/example_data.csv', file)},
-		contentType = 'text/csv'
-	)
 	output$Sage <- renderImage(list(
 		src = 'images/Sage Analytica Logo.png',
 		contentType = 'image/png', 
@@ -37,43 +28,39 @@ shinyServer(function(input, output, session) {
 		height = 100
 	), deleteFile = FALSE)
 	
-	progress <<- Progress$new()
-	customIncProgress <- function(amount = 0, reset = FALSE) {
-		value <<- amount + value
-		progress$set(value = value)
-		if (reset) {
-			value <<- 0
-		}
-	}
-	
-	ds <- reactive({
+	file_name <- reactive({
 		data_file <- input$in_file
 		if (is.null(data_file)) {return(NULL)}
-		data <- read.csv(data_file$datapath, check.names = FALSE)
+		return(data_file$datapath)
+	})
+	input_data <- reactive({
+		data_file <- input$in_file
+		if (is.null(data_file)) {return(NULL)}
+		data <- read.csv(data_file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
 		return(data)
 	})
 	observe({
-		ds <- ds()
-		updateSelectInput(session = session, inputId = 'age_group', choices = colnames(ds))
+		ds <- input_data()
+		updateSelectInput(session = session, inputId = 'group', choices = colnames(ds))
 	})
-	observeEvent(input$age_group, {
-		ds <- ds()
-		updateSelectInput(session = session, inputId = 'age_group_selected', choices = unique(ds[, input$age_group]), selected = unique(ds[, input$age_group]))
+	observeEvent(input$group, {
+		ds <- input_data()
+		updateSelectInput(session = session, inputId = 'group_selected', choices = unique(ds[, input$group]), selected = unique(ds[, input$group]))
 	})
-	observeEvent(input$age_group, {
-		ds <- ds()
-		updateSelectInput(session = session, inputId = 'date', choices = colnames(ds)[-c(match(c(input$age_group), colnames(ds)))])
+	observeEvent(input$group, {
+		ds <- input_data()
+		updateSelectInput(session = session, inputId = 'date', choices = colnames(ds)[-c(match(c(input$group), colnames(ds)))])
 	})
 	observeEvent(input$date, {
-		ds <- ds()
+		ds <- input_data()
 		all_dates <- unique(ds[, input$date])
-		updateSelectInput(session = session, inputId = 'variable', choices = colnames(ds)[-c(match(c(input$age_group, input$date), colnames(ds)))])
-		updateDateRangeInput(session = session, inputId = 'training_range', start = as.character(all_dates[1]), end = as.character(all_dates[length(all_dates)/2]), min = all_dates[1], max = all_dates[length(all_dates)])
-		updateDateRangeInput(session = session, inputId = 'eval_range', start = as.character(all_dates[length(all_dates)/2+1]), end = as.character(all_dates[length(all_dates)]), min = all_dates[1], max = all_dates[length(all_dates)])
+		updateSelectInput(session = session, inputId = 'variable', choices = colnames(ds)[-c(match(c(input$group, input$date), colnames(ds)))])
+		updateDateRangeInput(session = session, inputId = 'training_range', start = as.character(all_dates[1]), end = as.character(all_dates[length(all_dates) / 2]), min = all_dates[1], max = all_dates[length(all_dates)])
+		updateDateRangeInput(session = session, inputId = 'eval_range', start = as.character(all_dates[length(all_dates) / 2 + 1]), end = as.character(all_dates[length(all_dates)]), min = all_dates[1], max = all_dates[length(all_dates)])
 	})
 	observeEvent(input$variable, {
-		ds <- ds()
-		choices <- colnames(ds)[-c(match(c(input$age_group, input$date, input$variable), colnames(ds)))]
+		ds <- input_data()
+		choices <- colnames(ds)[-c(match(c(input$group, input$date, input$variable), colnames(ds)))]
 		if (input$covariate_checkbox) {
 			selected <- NULL
 		} else {
@@ -82,384 +69,445 @@ shinyServer(function(input, output, session) {
 		updateSelectInput(session = session, inputId = 'covariate', choices = choices, selected = selected)
 	})
 	observeEvent(input$covariate, {
-		ds <- ds()
-		choices <- colnames(ds)[-c(match(c(input$age_group, input$date, input$variable), colnames(ds)))]
+		ds <- input_data()
+		choices <- colnames(ds)[-c(match(c(input$group, input$date, input$variable), colnames(ds)))]
 		updateSelectInput(session = session, inputId = 'noj_denom', choices = choices)
 	})
 	
-	observeEvent(input$run_CausalImpact, {
-		if (is.null(progress)) {
-			progress <<- Progress$new()
+	input_vars <- eventReactive(input$run_CausalImpact, {
+		input_data <- input_data()
+		reformatted_date <- unique(formatDate(input_data[, input$date]))
+		
+		if (input$covariate_checkbox) {
+			exclude_covar <- input$covariate
+		} else {
+			exclude_covar <- colnames(input_data)[-c(match(c(input$group, input$date, input$variable, input$covariate), colnames(input_data)))]
 		}
-		progress$set(value = 0, message = 'Starting...')
-		customIncProgress(reset = TRUE)
-	})
-	locked_input <- eventReactive(input$run_CausalImpact, {return(input)})
-	reformatted_date <- eventReactive(input$run_CausalImpact, {return(formatDate(ds()[, locked_input()$date]))})
-	
-	start_date <- eventReactive(input$run_CausalImpact, {
-		reformatted_date <- reformatted_date()
-		if (as.numeric(locked_input()$training_range[1]) < as.numeric(reformatted_date[1])) {
+		exclude_group <- unique(input_data[, input$group])[!(unique(input_data[, input$group]) %in% input$group_selected)]
+		code_change <- input$adjust_covariates_checkbox
+		
+		input_directory  <- ''
+		output_directory <- dirname(file_name())
+		file_name        <- file_name()
+		
+		group_name   <- input$group
+		date_name    <- input$date
+		outcome_name <- input$variable
+		denom_name   <- input$noj_denom
+		
+		groups <- as.character(unique(unlist(input_data[, group_name], use.names = FALSE)))
+		if (exists('exclude_group')) {groups <- groups[!(groups %in% exclude_group)]}
+		
+		if (as.numeric(input$training_range[1]) < as.numeric(reformatted_date[1])) {
 			start_date <- as.Date(reformatted_date[1])
 		} else {
-			start_date <- as.Date(reformatted_date[findInterval(as.numeric(locked_input()$training_range[1]), as.numeric(as.Date(unique(reformatted_date))))])
+			start_date <- as.Date(reformatted_date[findInterval(as.numeric(input$training_range[1]), as.numeric(as.Date(unique(reformatted_date))))])
 		}
-	})
-	end_date <- eventReactive(input$run_CausalImpact, {
-		reformatted_date <- reformatted_date()
-		if (as.numeric(locked_input()$eval_range[2]) > as.numeric(as.Date(reformatted_date[length(reformatted_date)]))) {
+		intervention_date <- input$training_range[2]
+		if (as.numeric(input$eval_range[2]) > as.numeric(as.Date(reformatted_date[length(reformatted_date)]))) {
 			end_date <- as.Date(reformatted_date[length(reformatted_date)])
 		} else {
-			end_date <- as.Date(reformatted_date[Position(function(date) {date >= locked_input()$eval_range[2]}, as.numeric(as.Date(reformatted_date)))])
+			end_date <- as.Date(reformatted_date[Position(function(date) {date >= input$eval_range[2]}, as.numeric(as.Date(reformatted_date)))])
 		}
-	})
-	post_period <- eventReactive(time_points(), {
-		time_points <- time_points()
-		intervention_date <- locked_input()$training_range[2]
-		c(time_points[which(abs(time_points - intervention_date) == min(abs(time_points[time_points >= intervention_date] - intervention_date)))], end_date())
-	})
-	time_points <- eventReactive(input$run_CausalImpact, {
-		ds <- ds()
-		reformatted_date <- reformatted_date()
-		start_date <- start_date()
-		end_date <- end_date()
 		time_points <- as.Date(as.character(reformatted_date[match(start_date, as.Date(reformatted_date)):match(end_date, as.Date(reformatted_date))]))
+		pre_period <- input$training_range
+		post_period <- c(as.Date(min(abs(as.numeric(time_points[time_points >= intervention_date])))), end_date)
+		eval_period <- input$eval_range
+		
+		n_seasons <- length(unique(month(time_points)))
+		return(list(
+			groups = groups,
+			
+			n_seasons     = n_seasons, 
+			exclude_covar = exclude_covar, 
+			exclude_group = exclude_group,
+			code_change   = code_change,
+			
+			input_directory  = input_directory,
+			output_directory = output_directory,
+			file_name        = file_name,
+			
+			group_name   = group_name, 
+			date_name    = date_name,
+			outcome_name = outcome_name,
+			denom_name   = denom_name,
+			
+			start_date        = start_date,
+			intervention_date = intervention_date,
+			end_date          = end_date,
+			pre_period        = pre_period,
+			post_period       = post_period,
+			eval_period       = eval_period,
+			time_points       = time_points
+		))
 	})
-	age_groups <- eventReactive(input$run_CausalImpact, {paste(locked_input()$age_group, locked_input()$age_group_selected)})
 	
-	ds_log <- eventReactive(age_groups(), {
-		ds <- ds()
-		ds[, locked_input()$date] <- reformatted_date()
-		age_groups <- locked_input()$age_group_selected
-		ds <- setNames(lapply(age_groups, FUN = logTransform, factor_name = locked_input()$age_group, date_name = locked_input()$date, all_cause_name = locked_input()$noj_denom, all_cause_pneu_name = locked_input()$variable, start_date = start_date(), prelog_data = ds), age_groups())
+	prefiltered_data <- eventReactive(input_vars(), {
+		groups <- input_vars()$groups
+		
+		group_name <- input_vars()$group_name
+		date_name <- input_vars()$date_name
+		outcome_name <- input_vars()$outcome_name
+		denom_name <- input_vars()$denom_name
+		
+		start_date <- input_vars()$start_date
+		end_date <- input_vars()$end_date
+		
+		prelog_data <- input_data()
+		prelog_data[, date_name] <- formatDate(prelog_data[, date_name])
+		prelog_data <- setNames(lapply(groups, FUN = splitGroup, ungrouped_data = prelog_data, group_name = group_name, date_name = date_name, start_date = start_date, end_date = end_date, no_filter = c(group_name, date_name, outcome_name, denom_name)), groups)
+		
+		#Log-transform all variables, adding 0.5 to counts of 0.
+		ds <- setNames(lapply(prelog_data, FUN = logTransform, no_log = c(group_name, date_name)), groups)
+		ds <- lapply(ds, function(ds) {
+			if (!(denom_name %in% colnames(ds))) {
+				ds[denom_name] <- 0
+			}
+			return(ds)
+		})
 		return(ds)
 	})
-	covar_list <- eventReactive(ds_log(), {
-		ds <- ds_log()
-		age_groups <- age_groups()
-		covar_list <- sapply(age_groups, FUN = function(age_group) {
-			setNames(ifelse(locked_input()$covariate %in% colnames(ds[[age_group]]), TRUE, FALSE), locked_input()$covariate)
+	sparse_groups <- reactive({
+		ds <- prefiltered_data()
+		
+		group_name   <- input_vars()$group_name
+		date_name    <- input_vars()$date_name
+		outcome_name <- input_vars()$outcome_name
+		denom_name   <- input_vars()$denom_name
+		
+		exclude_covar <- input_vars()$exclude_covar
+		
+		sparse_groups <- sapply(ds, function(ds) {
+			return(ncol(ds[!(colnames(ds) %in% c(date_name, group_name, denom_name, outcome_name, exclude_covar))]) == 0)
 		})
-		if (length(locked_input()$covariate) <= 1) {
-			covar_list <- t(matrix(covar_list, dimnames = list(age_groups, locked_input()$covariate)))
-		}
-		return(covar_list)
+		return(sparse_groups)
 	})
-	covars <- eventReactive(covar_list(), {
-		age_groups <- age_groups()
-		ds <- ds_log()
-		covar_list <- covar_list()
-		if (locked_input()$covariate_checkbox) {
-			if (is.null(locked_input()$covariate)) {
-				covariates <-  colnames(ds)[-c(match(c(locked_input()$age_group, locked_input()$date, locked_input()$variable), colnames(ds)))]
-			} else {
-				covariates <- colnames(ds)[-c(match(c(locked_input()$age_group, locked_input()$date, locked_input()$variable, locked_input()$covariate), colnames(ds)))]
-			}
-		} else {
-			covariates <- locked_input()$covariate
-		}
-		if (length(covariates) == 0) {
-			return(NULL)
-		} else {
-			covars <- setNames(lapply(age_groups, FUN = function(age_group) {
-				good_covars <- rownames(covar_list[covar_list[, age_group] == TRUE, age_group, drop = FALSE])
-				if (locked_input()$adjust_covariates_checkbox) {
-					#Eliminates effects from 2008 coding change
-					covars <- ds[[age_group]][, good_covars, drop = FALSE]
-					month_i <- as.factor(as.numeric(format(as.Date(as.character(ds[[age_group]][, locked_input()$date])), '%m')))
-					spline <- setNames(as.data.frame(bs(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
-					year_2008 <- numeric(nrow(covars))
-					year_2008[1:nrow(covars) >= match(as.Date('2008-01-01'), as.Date(as.character(ds[[age_group]][, locked_input()$date])))] <- 1
-					data <- cbind.data.frame(year_2008, spline, month_i)
-					trend <- lapply(covars, getTrend, data = data)
-					covars <- covars - trend
-				} else {
-					covars <- ds[[age_group]][, good_covars, drop = FALSE]
-				}
-				#if (locked_input()$loess_slidebar != 0) {
-				#	span <- locked_input()$loess_slidebar
-				#	covars <- as.data.frame(sapply(covars, FUN = function(covar) {predict(loess(covar~seq(nrow(covars)), span = span))}))
-				#}
-				covars <- as.data.frame(lapply(covars[, apply(covars, 2, var) != 0, drop = FALSE], scale))
-				return(covars)
-			}), age_groups)
-			return(covars)
-		}
-	}) #Possibly add 2nd model and 3rd model for covars_ach and covars_noj
-	#Add conditionals for model selection
-	covars_time <- eventReactive(covars(), {
-		setNames(lapply(covars(), FUN = function(covars) {
-			as.data.frame(list(time_index = 1:nrow(covars)))
-		}), age_groups())
-	}) #Add conditionals for model selection
-	run_sensitivity <- eventReactive(covars(), {
-		results <- sapply(covars(), FUN = function(covars) {return(length(colnames(covars)) > 3)})
-		return(locked_input()$run_sensitivity && results)
-	})
-	noj_denom <- eventReactive(ds_log(), {
-		ds <- ds_log()
-		setNames(sapply(ds_log(), FUN = function(ds) {
-			if (locked_input()$noj_denom %in% colnames(ds)) {
-				denom <- ds[, locked_input()$noj_denom]
-			} else {
-				denom <- ds[, 1]
-				denom[] <- 0
-				print(paste(locked_input()$noj_denom, 'is not in dataset.'))
-			}
-			if (locked_input()$no_noj_denom) {
-				denom[] <- 0
-			}
-			return(denom)
-		}), age_groups())})
+	ds <- reactive(prefiltered_data()[!sparse_groups()])
+	groups <- reactive(input_vars()$groups[!sparse_groups()])
 	
-	outcome <- eventReactive(ds_log(), {sapply(ds_log(), FUN = function(data) {scale(data[, locked_input()$variable])})})
-	outcome_mean <- eventReactive(ds_log(), {sapply(ds_log(), FUN = function(data) {mean(data[, locked_input()$variable])})})
-	outcome_sd <- eventReactive(ds_log(), {sapply(ds_log(), FUN = function(data) {sd(data[, locked_input()$variable])})})
-	outcome_plot <- eventReactive(list(outcome(), outcome_sd(), outcome_mean()), {exp(t(t(outcome()) * outcome_sd() + outcome_mean()))})
-	outcome_offset <- eventReactive(noj_denom(), {
-		ds <- ds_log()
-		noj_denom <- noj_denom()
-		age_groups <- age_groups()
-		null_outcome <- sapply(age_groups, FUN = function(age_group) {ds[[age_group]][, locked_input()$variable] - noj_denom[, age_group]})
-		return(null_outcome)
-	})
-	outcome_offset_mean <- reactive({colMeans(outcome_offset())})
-	outcome_offset_sd <- eventReactive(noj_denom(), {
-		ds <- ds_log()
-		noj_denom <- noj_denom()
-		age_groups <- age_groups()
-		sapply(age_groups, FUN = function(age_group) {sd(ds[[age_group]][, locked_input()$variable] - noj_denom[, age_group])})
-	})
-	
-	#CausalImpact
-	data_full <- eventReactive(list(outcome(), time_points()), {
-		age_groups <- age_groups()
-		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome(), covars = covars(), time_points = time_points(), scale_outcome = FALSE), age_groups)
-	})
-	#Add conditional for model selection.
-	data_time <- eventReactive(list(outcome(), time_points()), {
-		age_groups <- age_groups()
-		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome(), covars = covars_time(), time_points = time_points(), scale_outcome = TRUE), age_groups)
-	}) #Add conditional for model selection.
-	data_offset <- eventReactive(list(outcome_offset(), time_points()), {
-		age_groups <- age_groups()
-		setNames(lapply(age_groups, makeTimeSeries, outcome = outcome_offset(), covars = NULL, time_points = time_points(), scale_outcome = TRUE), age_groups)
-	})
-	
-	impact_full <- eventReactive(data_full(), {
-		age_groups <- age_groups()
-		zoo_data <- data_full()
-		time_points <- time_points()
-		intervention_date <- as.Date(as.character(locked_input()$training_range))[2]
-
-		progress$set(message = 'Running Selected Model.')
+	covars_full <- reactive({
+		ds <- ds()
+		groups <- groups()
 		
-		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
-		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
+		code_change <- input_vars()$code_change
+		intervention_date <- input_vars()$intervention_date
+		time_points <- input_vars()$time_points
+		exclude_covar <- input_vars()$exclude_covar
 		
-		impact_full <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points), age_groups)
+		covars_full <- setNames(lapply(ds, makeCovars, code_change = code_change, intervention_date = intervention_date, time_points = time_points), groups)
+		covars_full <- sapply(covars_full, FUN = function(covars) {covars[, !(colnames(covars) %in% exclude_covar), drop = FALSE]})
+		return(covars_full)
+	})
+	covars_time <- reactive({
+		covars_full <- covars_full()
+		groups <- groups()
+		
+		setNames(lapply(covars_full, FUN = function(covars) {as.data.frame(list(time_index = 1:nrow(covars)))}), groups)
+	})
+	
+	outcome      <- reactive(sapply(ds(), FUN = function(data) {scale(data[, input_vars()$outcome_name])}))
+	outcome_mean <- reactive(sapply(ds(), FUN = function(data) {mean( data[, input_vars()$outcome_name])}))
+	outcome_sd   <- reactive(sapply(ds(), FUN = function(data) {sd(   data[, input_vars()$outcome_name])}))
+	outcome_plot <- reactive(exp(t(t(outcome()) * outcome_sd() + outcome_mean())))
+	outcome_offset      <- reactive(scale(   sapply(ds(), FUN = function(data) {   data[, input_vars()$outcome_name] - data[, input_vars()$denom_name]})))
+	outcome_offset_mean <- reactive(colMeans(sapply(ds(), FUN = function(data) {   data[, input_vars()$outcome_name] - data[, input_vars()$denom_name]})))
+	outcome_offset_sd   <- reactive(         sapply(ds(), FUN = function(data) {sd(data[, input_vars()$outcome_name] - data[, input_vars()$denom_name])}))
+	
+	data_full <- reactive(setNames(lapply(groups(), makeTimeSeries, outcome = outcome(),        covars = covars_full(), time_points = input_vars()$time_points), groups()))
+	data_time <- reactive(setNames(lapply(groups(), makeTimeSeries, outcome = outcome_offset(), covars = covars_time(), time_points = input_vars()$time_points), groups()))
+	
+	impact_full <- reactive({
+		data_full <- data_full()
+		groups <- groups()
+		
+		intervention_date <- input_vars()$intervention_date
+		time_points <- input_vars()$time_points
+		n_seasons <- input_vars()$n_seasons
+		
+		if (Sys.info()['sysname'] == 'Windows') {
+			cl <- makeCluster(n_cores)
+			clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
+			clusterExport(cl, c('doCausalImpact', 'impactExtract', 'intervention_date', 'time_points', 'n_seasons'), environment())
+		} else {
+			cl <- makeForkCluster(n_cores)
+		}
+		
+		impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
 		
 		stopCluster(cl)
-		customIncProgress(amount = 0.2)
-		
+		gc()
 		return(impact_full)
 	})
-	impact_time <- eventReactive(data_time(), {
-		age_groups <- age_groups()
-		zoo_data <- data_time()
-		time_points <- time_points()
-		intervention_date <- as.Date(as.character(locked_input()$training_range))[2]
+	impact_time <- reactive({
+		data_time <- data_time()
+		groups <- groups()
 		
-		progress$set(message = 'Running Time Trend Model.')
+		intervention_date <- input_vars()$intervention_date
+		time_points <- input_vars()$time_points
+		n_seasons <- input_vars()$n_seasons
 		
-		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
-		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
+		if (Sys.info()['sysname'] == 'Windows') {
+			cl <- makeCluster(n_cores)
+			clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
+			clusterExport(cl, c('doCausalImpact', 'impactExtract', 'intervention_date', 'time_points', 'n_seasons'), environment())
+		} else {
+			cl <- makeForkCluster(n_cores)
+		}
 		
-		impact_time <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points, trend = TRUE), age_groups)
+		impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), groups)
 		
 		stopCluster(cl)
-		
-		customIncProgress(amount = 0.2)
-		
+		gc()
 		return(impact_time)
 	})
-	impact_offset <- eventReactive(outcome_offset(), {
-		age_groups <- age_groups()
-		zoo_data <- data_offset()
-		time_points <- time_points()
-		intervention_date <- as.Date(as.character(locked_input()$training_range))[2]
-
-		progress$set(message = 'Running Offset Model.')
+	
+	inclusion_prob_full <- reactive(setNames(lapply(impact_full(), inclusionProb), groups()))
+	inclusion_prob_time <- reactive(setNames(lapply(impact_time(), inclusionProb), groups()))
+	
+	#All model results combined
+	quantiles_full <- reactive({
+		impact_full <- impact_full()
+		groups <- groups()
+		ds <- ds()
+		outcome_mean <- outcome_mean()
+		outcome_sd <- outcome_sd()
 		
-		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
-		clusterExport(cl, c('zoo_data', 'doCausalImpact', 'time_points', 'intervention_date', 'age_groups'), envir = environment())
-		impact_offset <- setNames(parLapply(cl, zoo_data, doCausalImpact, intervention_date = intervention_date, time_points = time_points, offset = TRUE), age_groups)
-		stopCluster(cl)
+		eval_period <- input_vars()$eval_period
+		post_period <- input_vars()$post_period
+		denom_name <- input_vars()$denom_name
 		
-		customIncProgress(amount = 0.2)
-		return(impact_offset)
+		quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)}), groups)
+		return(quantiles_full)
+	})
+	quantiles_time <- reactive({
+		impact_time <- impact_time()
+		groups <- groups()
+		ds <- ds()
+		outcome_offset_mean <- outcome_offset_mean()
+		outcome_offset_sd <- outcome_offset_sd()
+		
+		eval_period <- input_vars()$eval_period
+		post_period <- input_vars()$post_period
+		denom_name <- input_vars()$denom_name
+		
+		quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
+		return(quantiles_time)
 	})
 	
-	inclusion_prob_full <- eventReactive(impact_full(), {
-		age_groups <- age_groups()
-		impact <- impact_full()
-		setNames(mapply(inclusionProb, age_groups, impact, SIMPLIFY = FALSE), age_groups)
+	#Model predicitons
+	pred_quantiles_full <- reactive(sapply(quantiles_full(), getPred, simplify = 'array'))
+	pred_quantiles_time <- reactive(sapply(quantiles_time(), getPred, simplify = 'array'))
+	
+	#Rolling rate ratios
+	rr_roll_full <- reactive(sapply(quantiles_full(), FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array'))
+	rr_roll_time <- reactive(sapply(quantiles_time(), FUN = function(quantiles_time) {quantiles_time$roll_rr}, simplify = 'array'))
+	
+	#Rate ratios for evaluation period.
+	rr_mean_full <- reactive(t(sapply(quantiles_full(), getRR)))
+	rr_mean_time <- reactive({
+		rr_mean_time <- t(sapply(quantiles_time(), getRR))
+		colnames(rr_mean_time) <- paste('ITS', colnames(rr_mean_time))
+		return(rr_mean_time)
 	})
-	inclusion_prob_time <- eventReactive(impact_time(), {
-		age_groups <- age_groups()
-		impact <- impact_time()
-		setNames(mapply(inclusionProb, age_groups, impact, SIMPLIFY = FALSE), age_groups)
-	})
 	
-	#Model results
-	quantiles_full   <- eventReactive(impact_full(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_full()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period())}), age_groups())})
-	quantiles_time   <- eventReactive(impact_time(),   {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_time()[[age_group]], mean = outcome_mean()[age_group], sd = outcome_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period())}), age_groups())})
-	quantiles_offset <- eventReactive(impact_offset(), {setNames(lapply(age_groups(), FUN = function(age_group) {rrPredQuantiles(impact = impact_offset()[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_offset_mean()[age_group], sd = outcome_offset_sd()[age_group], eval_period = locked_input()$eval_range, post_period = post_period(), offset = TRUE)}), age_groups())})
-	
-	pred_quantiles_full   <- eventReactive(quantiles_full(),   {sapply(quantiles_full(),   getPred, simplify = 'array')})
-	pred_quantiles_time   <- eventReactive(quantiles_time(),   {sapply(quantiles_time(),   getPred, simplify = 'array')})
-	pred_quantiles_offset <- eventReactive(quantiles_offset(), {sapply(quantiles_offset(), getPred, simplify = 'array')})
-	
-	rr_roll_full <- eventReactive(quantiles_full(), sapply(quantiles_full(), FUN = function(quantiles_full) {quantiles_full$roll_rr}, simplify = 'array'))
-	rr_roll_time <- eventReactive(quantiles_time(), sapply(quantiles_time(), FUN = function(quantiles_time) {quantiles_time$roll_rr}, simplify = 'array'))
-	
-	rr_mean_full   <- eventReactive(quantiles_full(),   {quantiles <- cbind(age_groups(), t(sapply(quantiles_full(),   getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
-	rr_mean_time   <- eventReactive(quantiles_time(),   {quantiles <- cbind(age_groups(), t(sapply(quantiles_time(),   getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
-	rr_mean_offset <- eventReactive(quantiles_offset(), {quantiles <- cbind(age_groups(), t(sapply(quantiles_offset(), getRR))); colnames(quantiles)[1] <- locked_input()$age_group; return(quantiles)})
-	
-	#Cumulative sum of prevented cases
-	plot_cumsum_prevented <- eventReactive(quantiles_full(), {
-		sapply(age_groups(), FUN = function(age_group, post_period, quantiles) {
-			pred_samples_post_full <- quantiles[[age_group]]$pred_samples_post_full
-			
-			time_points <- time_points()
-			post_period_start <- which(time_points == post_period[1]) 
-			post_period_end <- which(time_points == post_period[2]) 
+	cumsum_prevented <- reactive({
+		groups <- groups()
+		outcome_plot <- outcome_plot()
+		quantiles_full <- quantiles_full()
+		
+		time_points <- input_vars()$time_points
+		post_period <- input_vars()$post_period
+		
+		sapply(groups, FUN = function(group, quantiles) {
 			is_post_period <- which(time_points >= post_period[1])
 			is_pre_period <- which(time_points < post_period[1])
 			
-			cases_prevented <- pred_samples_post_full - outcome_plot()[, age_group]
-			cumsum_cases_prevented_post <- apply(cases_prevented[is_post_period,], 2, cumsum)
-			cumsum_cases_prevented_pre <- apply(cases_prevented[is_pre_period,, drop = FALSE], 2, cumsum)
-			cumsum_cases_prevented_pre[,] <- 0
+			#Cumulative sum of prevented cases
+			cases_prevented <- quantiles[[group]]$pred_samples - outcome_plot[, group]
+			cumsum_cases_prevented_post <- apply(cases_prevented[is_post_period, ], 2, cumsum)
+			cumsum_cases_prevented_pre <- matrix(0, nrow = nrow(cases_prevented[is_pre_period, ]), ncol = ncol(cases_prevented[is_pre_period, ]))
 			cumsum_cases_prevented <- rbind(cumsum_cases_prevented_pre, cumsum_cases_prevented_post)
-			plot_cumsum_prevented <- t(apply(cumsum_cases_prevented, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-		}, post_period = post_period(), quantiles = quantiles_full(), simplify = 'array')})
+			cumsum_prevented <- t(apply(cumsum_cases_prevented, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+		}, quantiles = quantiles_full, simplify = 'array')
+	})
 	
-	sensitivity_analysis_full <- eventReactive(impact_full(), {
-		if (!run_sensitivity()) {counter <<- counter + 1; return(counter)}
-		age_groups <- age_groups()
-		ds <- ds_log()
-		covars <- covars()
-		impact_full <- impact_full()
-		time_points <- time_points()
-		intervention_date <- as.Date(as.character(locked_input()$training_range))[2]
+#	sensitivity_pred_2  <- reactive({
+#		groups <- groups()
+#		ds <- ds()
+#		data_full <- data_full()
+#		outcome_mean <- outcome_mean()
+#		outcome_sd <- outcome_sd()
+#		denom_name <- input_vars()$denom_name
+#		intervention_date <- input_vars()$intervention_date
+#		eval_period <- input_vars()$eval_period
+#		post_period <- input_vars()$post_period
+#		time_points <- input_vars()$time_points
+#		n_seasons <- input_vars()$n_seasons
+#		
+#		if (Sys.info()['sysname'] == 'Windows') {
+#			cl <- makeCluster(n_cores)
+#			clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
+#			clusterExport(cl, c('doCausalImpact', 'impactExtract', 'predSensitivityAnalysis', 'inclusionProb', 'rrPredQuantiles', 'getPred', 'getRR', 'groups', 'ds', 'data_full', 'denom_name', 'outcome_mean', 'outcome_sd', 'intervention_date', 'eval_period', 'post_period', 'time_points', 'n_seasons'), environment())
+#		} else {
+#			cl <- makeForkCluster(n_cores)	
+#		}
+#		
+#		sensitivity_analysis_pred_2  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 2 ))), c('Lower CI', 'Point Estimate', 'Upper CI'))
+#
+#		stopCluster(cl)
+#		gc()
+#		return(sensitivity_analysis_pred_2)
+#	})
+#	sensitivity_pred_10 <- reactive({
+#		groups <- groups()
+#		ds <- ds()
+#		data_full <- data_full()
+#		outcome_mean <- outcome_mean()
+#		outcome_sd <- outcome_sd()
+#		denom_name <- input_vars()$denom_name
+#		intervention_date <- input_vars()$intervention_date
+#		eval_period <- input_vars()$eval_period
+#		post_period <- input_vars()$post_period
+#		time_points <- input_vars()$time_points
+#		n_seasons <- input_vars()$n_seasons
+#		
+#		if (Sys.info()['sysname'] == 'Windows') {
+#			cl <- makeCluster(n_cores)
+#			clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
+#			clusterExport(cl, c('doCausalImpact', 'impactExtract', 'predSensitivityAnalysis', 'inclusionProb', 'rrPredQuantiles', 'getPred', 'getRR', 'groups', 'ds', 'data_full', 'denom_name', 'outcome_mean', 'outcome_sd', 'intervention_date', 'eval_period', 'post_period', 'time_points', 'n_seasons'), environment())
+#		} else {
+#			cl <- makeForkCluster(n_cores)	
+#		}
+#		
+#		sensitivity_analysis_pred_10  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 10))), c('Lower CI', 'Point Estimate', 'Upper CI'))
+#		
+#		stopCluster(cl)
+#		gc()
+#		return(sensitivity_analysis_pred_10)
+#	})
+	
+	bad_sensitivity_groups <- reactive(sapply(covars_full(), function (covar) {ncol(covar) <= 3}))
+	sensitivity_covars_full <- reactive(covars_full()[!bad_sensitivity_groups()])
+	sensitivity_ds <- reactive(ds()[!bad_sensitivity_groups()])
+	sensitivity_impact_full <- reactive(impact_full()[!bad_sensitivity_groups()])
+	sensitivity_groups <- reactive(groups()[!bad_sensitivity_groups()])
+	
+	sensitivity_analysis_full <- reactive({
+		sensitivity_groups <- sensitivity_groups()
+		sensitivity_covars_full <- sensitivity_covars_full()
+		sensitivity_ds <- sensitivity_ds()
+		sensitivity_impact_full <- sensitivity_impact_full()
 		outcome <- outcome()
+		outcome_mean <- outcome_mean()
+		outcome_sd <- outcome_sd()
+		
+		time_points <- input_vars()$time_points
+		intervention_date <- input_vars()$intervention_date
+		n_seasons <- input_vars()$n_seasons
+		eval_period <- input_vars()$eval_period
+		post_period <- input_vars()$post_period
 
-		progress$set(message = 'Running Sensitivity Analysis.')
+		if (Sys.info()['sysname'] == 'Windows') {
+			cl <- makeCluster(n_cores)
+			clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
+			clusterExport(cl, c('sensitivity_ds', 'doCausalImpact', 'impactExtract', 'weightSensitivityAnalysis', 'rrPredQuantiles', 'sensitivity_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
+		} else {
+			cl <- makeForkCluster(n_cores)	
+		}
 		
-		cl <- makeCluster(n_cores)
-		clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
-		clusterExport(cl, c('ds', 'doCausalImpact', 'sensitivityAnalysis', 'age_groups', 'intervention_date', 'outcome', 'time_points'), envir = environment())
-		
-		#Sensitivity Analysis
-		sensitivity_analysis <- setNames(parLapply(cl, age_groups, sensitivityAnalysis, ds = ds, covars = covars, impact = impact_full, intervention_date = intervention_date, outcome = outcome, time_points = time_points), age_groups)
+		sensitivity_analysis_full <- setNames(parLapply(cl, sensitivity_groups, weightSensitivityAnalysis, covars = sensitivity_covars_full, ds = sensitivity_ds, impact = sensitivity_impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome, mean = outcome_mean, sd = outcome_sd, eval_period = eval_period, post_period = post_period), sensitivity_groups)
 		
 		stopCluster(cl)
-		
-		customIncProgress(amount = 0.6)
-		
-		return(sensitivity_analysis)
+		gc()
+		return(sensitivity_analysis_full)
 	})
-	
-	#Table of Rate Ratios for each Analysis Level
-	mean_rr_table <- eventReactive(sensitivity_analysis_full(), t({
-		if (!run_sensitivity()) {counter <<- counter + 1; return(counter)}
-		sensitivity_analysis <- sensitivity_analysis_full()
-		age_groups <- isolate(age_groups())
-		impact_full <- isolate(impact_full())
-		ds <- isolate(ds_log())
-		outcome_mean <- isolate(outcome_mean())
-		outcome_sd <- isolate(outcome_sd())
-		sapply(age_groups, FUN = function(age_group) {
-			rr_pred_quantile <- rrPredQuantiles(impact = impact_full[[age_group]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = post_period())
-			cred_int <- c(age_group, 'Initial' = round(rr_pred_quantile$mean_rr, 4), 'Initial .95' = paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
-			names(cred_int)[1] <- locked_input()$age_group
-			cred_int_analyses <- lapply(1:length(sensitivity_analysis[[age_group]]), FUN = function(i) {
-				rr_pred_quantile <- rrPredQuantiles(impact = sensitivity_analysis[[age_group]][[i]], all_cause_data = noj_denom()[, age_group], mean = outcome_mean[age_group], sd = outcome_sd[age_group], eval_period = locked_input()$eval_range, post_period = post_period())
-				cred_int <- c(round(rr_pred_quantile$mean_rr, 4), paste('(', round(rr_pred_quantile$rr[1], 4), ',', round(rr_pred_quantile$rr[3], 4), ')', sep = ''))
-				names(cred_int) <- c(paste('Analysis', i), paste('Analysis', i, '.95'))
-				return(cred_int)
-			})
-			c(cred_int, cred_int_analyses, recursive = TRUE)
-		})
-	}))
-	
-	covar_warning <- reactive({
-		setNames(lapply(age_groups(), FUN = function(age_group) {
-			covar_list <- covar_list()
-			bad_covars <- rownames(covar_list[covar_list[, age_group] == FALSE, age_group, drop = FALSE])
-			if (is.null(bad_covars) || length(bad_covars) == 0) {
-				return('')
-			} else if (length(bad_covars) == 1) {
-				return(paste('Note that', bad_covars, 'was removed due to insufficient data.'))
-			} else {
-				return(paste('Note that', paste(bad_covars, collapse = ", "), 'were removed from the analysis due to insufficient data.'))
+	sensitivity_pred_quantiles <- reactive({
+		sensitivity_pred_quantiles  <- lapply(sensitivity_analysis_full(), FUN = function(sensitivity_analysis) {
+			pred_list <- vector(mode = 'list', length = length(sensitivity_analysis))
+			for (sensitivity_index in 1:length(sensitivity_analysis)) {
+				pred_list[[sensitivity_index]] <- getPred(sensitivity_analysis[[sensitivity_index]])
 			}
-		}), age_groups())
+			return(pred_list)
+		})
 	})
-	age_group_tabs <- eventReactive(mean_rr_table(), {
-		ds <- ds_log()
-		covars <- covars()
-		age_groups <- age_groups()
+	sensitivity_table <- reactive(t(sapply(sensitivity_groups(), sensitivityTable, sensitivity_analysis = sensitivity_analysis_full(), original_rr = rr_mean_full())))
+	rr_table <- reactive(cbind(rr_mean_time()[!bad_sensitivity_groups(), ], sensitivity_table()))
+	
+	incl_probs <- reactive({
+		groups <- groups()
+		impact_full <- impact_full()
+		
+		incl_probs <- NULL
+		for (group in groups) {
+			incl_prob <- rev(impact_full[[group]]$inclusion_probs)[1:3]
+			incl_prob <- data.frame('Group' = group, 'Greatest Inclusion Variable' = names(incl_prob)[1], 'Greatest Inclusion Probability' = incl_prob[1], 'Second Greatest Inclusion Variable' = names(incl_prob)[2], 'Second Greatest Inclusion Probability' = incl_prob[2], 'Third Greatest Inclusion Variable' = names(incl_prob)[3], 'Third Greatest Inclusion Probability' = incl_prob[3], check.names = FALSE)
+			incl_probs <- rbind(incl_probs, incl_prob)
+		}
+		rownames(incl_probs) <- NULL
+		return(incl_probs)
+	})
+	
+	group_tabs <- reactive({
+		progress <- Progress$new()
+		on.exit(progress$close())
+		progress$set(message = 'Setup', value = 0)
+		groups <- groups()
+		sparse_groups <- sparse_groups()
+		time_points <- input_vars()$time_points
+		outcome_plot <- outcome_plot()
+		post_period  <- input_vars()$post_period
+		progress$inc(amount = 0.25, message = 'Synthetic Control Analysis')
+		rr_mean_full <- rr_mean_full()
+		rr_mean_time <- rr_mean_time()
+		rr_roll_full <- rr_roll_full()
+		rr_roll_time <- rr_roll_time()
+		inclusion_prob_full <- inclusion_prob_full()
+		incl_probs <- incl_probs()
+		progress$inc(amount = 0.25, message = 'Sensitivity Analysis')
+		sensitivity_table <- sensitivity_table()
+		#sensitivity_analysis_pred_2 <- sensitivity_pred_2()
+		#sensitivity_analysis_pred_10 <- sensitivity_pred_10()
+		sensitivity_pred_quantiles <- sensitivity_pred_quantiles()
+		covars_full <- covars_full()
 		pred_quantiles_full <- pred_quantiles_full()
 		pred_quantiles_time <- pred_quantiles_time()
-		pred_quantiles_offset <- pred_quantiles_offset()
-		inclusion_prob <- inclusion_prob_full()
-		tabs <- lapply(age_groups, FUN = function(age_group) {
-			dates <- as.Date(as.character(ds[[age_group]][, locked_input()$date]))
+		cumsum_prevented <- cumsum_prevented()
+		progress$inc(amount = 0.25, message = 'Plotting')
+		source('synthetic_control_plot.R', local = TRUE)
+		progress$inc(amount = 0.25, message = 'Finishing')
+		tabs <- lapply(groups, FUN = function(group) {
 			tab <- tabPanel(
-				title = age_group, 
-				renderPlot(plotPred(data = pred_quantiles_full()[, , age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Full Synthetic Control Plot')),
-				renderPlot(plotPred(data = pred_quantiles_time()[, , age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, title = 'Interrupted Time Series Plot')),
-				renderPlot(plotPred(data = pred_quantiles_offset()[,, age_group], time_points = time_points(), post_period = post_period(), pred_quantiles_full = pred_quantiles_full()[, , age_group], pred_quantiles_offset = pred_quantiles_offset()[, , age_group], outcome_plot = outcome_plot()[, age_group], fix_2008 = locked_input()$covariate_checkbox, offset = TRUE, title = 'Simple Pre-post Comparison Plot')),
-				renderPlot({matplot(rr_roll_full()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Synthetic controls: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
-				renderPlot({matplot(rr_roll_time()[, , age_group], type = 'l', xlim = c(12, 72), ylim = c(0.3, 1.7), col = 'black', bty = 'l', main = paste(age_group, 'Interupted time series: rolling rate ratio'), ylab = 'Rate Ratio'); abline(h = 1, lty = 2)}),
-				renderPlot(plot(impact_full()[[age_group]]$model$bsts.model, 'coefficients', main = age_group)),
-				renderPlot(plot(zoo(covars[[age_group]][, rownames(inclusion_prob[[age_group]])[2:length(rownames(inclusion_prob[[age_group]]))]], dates), plot.type = 'single', type = 'l', main = 'Weight Assigned to Different Covariates', xlab = 'Time', ylab = 'Scaled Values', col = rgb(0, 0, 0, alpha = unlist(inclusion_prob[[age_group]][2:length(rownames(inclusion_prob[[age_group]])),])))), #col = rainbow(ncol(covars[[age_group]]))
-				renderText(covar_warning()[[age_group]])
+				title = group, 
+				renderPlot({print(plot_list[[group]]$covar_plot)}),
+				renderPlot({print(plot_list[[group]]$pred_full_plot)}),
+				renderPlot({print(plot_list[[group]]$pred_time_plot)}),
+				renderPlot({print(plot_list[[group]]$pred_sensitivity_plot)}),
+				renderPlot({print(plot_list[[group]]$rr_roll_full_plot)}),
+				renderPlot({print(plot_list[[group]]$rr_roll_time_plot)}),
+				renderPlot({print(plot_list[[group]]$cumsum_prevented_plot)})
 			)
 			return(tab)
 		})
-		if (!run_sensitivity()) {mean_rr_table <- NULL; sensitivity_header <- NULL} else {mean_rr_table <- mean_rr_table(); sensitivity_header <- "Rate ratios and credible intervals from sensitivity analyses."}
+		
 		summary_tab <- tabPanel(
 			title = 'Summary',
-			h3("Rate ratios and credible intervals from main analyses."),
-			renderTable(rr_mean_full(), caption = 'Full Synthetic Control Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
-			renderTable(rr_mean_time(), caption = 'Time Trend Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
-			renderTable(rr_mean_offset(), caption = 'Offset Model Quantiles', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
-			h3(sensitivity_header),
-			renderTable(mean_rr_table, caption = 'Rate Ratios and Credibility Intervals', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL))
+			if (!is.null(names(sparse_groups[sparse_groups])) && length(names(sparse_groups[sparse_groups])) != 0) {
+				renderTable(data.frame('Sparse Groups' = names(sparse_groups[sparse_groups]), check.names = FALSE), caption = 'Sparse Groups', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL))
+			},
+			renderTable(rr_mean_full,                 caption = 'Synthetic Control Quantiles',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			renderTable(rr_mean_time,                 caption = 'Interrupted Time Series Quantiles',                              caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			renderTable(incl_probs,                   caption = 'Inclusion Probabilities',                                        caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
+			renderTable(sensitivity_table,            caption = 'Weight Sensitivity Analysis',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)#,
+			#renderTable(sensitivity_analysis_pred_2,  caption = 'Predictor Sensitivity Analysis where Number of Predictors = 2',  caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			#renderTable(sensitivity_analysis_pred_10, caption = 'Predictor Sensitivity Analysis where Number of Predictors = 10', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)
 		)
 		tabs <- append(list(summary_tab), tabs)
 		return(tabs)
 	})
 	output$tab_view <- renderUI({
-		age_groups <- age_groups()
-		#if (length(age_groups) > 20) {
-		#	print('Too many factors - likely chose the wrong column.')
-		#	return(NULL)
-		#} else if (length(age_groups) == 0) {return(NULL)}
-		if (length(age_groups) == 0) {return(NULL)}
-		tabs <- age_group_tabs()
-		if (!is.null(progress)) {
-			progress$set(value = 1.0)
-			progress$close()
-			progress <<- NULL
-		}
+		groups <- groups()
+		if (length(groups) == 0) {return(NULL)}
+		tabs <- group_tabs()
 		do.call(tabsetPanel, tabs)
 	})
 })

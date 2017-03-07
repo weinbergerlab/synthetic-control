@@ -20,11 +20,11 @@ install_packages <- TRUE #Whether to install missing packages.
 install_pandoc   <- TRUE #Whether to install pandoc, which requires an external installer, and rmarkdown, a package that depends on pandoc's successful installation.
 
 #Assign variable values
-country     <- 'Brazil'  #Country or region name.
-n_seasons   <- 3         #Number of months (seasons) per year. 12 for monthly, 4 for quarterly, 3 for trimester data.
-exclude     <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39', 'J40-47', 'J60-70', 'J80-84', 'J85-J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98') #User-defined list of covariate columns to exclude from all analyses.
-exclude     <- c(exclude, gsub('-', '_', exclude))
-code_change <- FALSE     #Used for Brazil data. Set to TRUE to adjust for year 2008 coding changes; otherwise, set to FALSE.
+country       <- 'Brazil' #Country or region name.
+n_seasons     <- 12       #Number of months (seasons) per year. 12 for monthly, 4 for quarterly, 3 for trimester data.
+exclude_covar <- c()      #User-defined list of covariate columns to exclude from all analyses.
+exclude_group <- c()      #User-defined list of groups to exclude from analyses.
+code_change   <- TRUE     #Used for Brazil data. Set to TRUE to adjust for year 2008 coding changes; otherwise, set to FALSE.
 
 input_directory  <- 'https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/' #Directory (or URL) containing input data file.
 output_directory <- paste('~/Desktop/Results/', sep = '')                                                             #Directory where results will be saved.
@@ -34,18 +34,19 @@ file_name        <- 'Dataset%20S1%20Brazil.csv'                                 
 group_name   <- 'age_group' #Name of column containing group labels.
 date_name    <- 'date'      #Name of column containing dates.
 outcome_name <- 'J12_18'    #Name of column containing outcome.
-denom_name   <- 'ACM_NoPCV' #Name of column containing denominator to be used in offset.
+denom_name   <- 'ach_noj'   #Name of column containing denominator to be used in offset.
 
-start_date        <- as.Date('2003-01-01') #Indicates the date of the first data point.
-intervention_date <- as.Date('2009-04-30') #Indicates the date of intervention in the data.
+start_date        <- as.Date('2004-01-01') #Indicates the date of the first data point.
+intervention_date <- as.Date('2009-12-31') #Indicates the date of intervention in the data.
 end_date          <- as.Date('2013-12-01') #Indicates the date of the last data point.
-pre_period        <- as.Date(c('2003-01-01', '2009-04-30')) #Range over which the data is trained for the CausalImpact model.
-post_period       <- as.Date(c('2009-05-01', '2013-12-01')) #Range from the intervention date to the end date.
+pre_period        <- as.Date(c('2004-01-01', '2009-12-31')) #Range over which the data is trained for the CausalImpact model.
+post_period       <- as.Date(c('2010-01-01', '2013-12-01')) #Range from the intervention date to the end date.
 eval_period       <- as.Date(c('2012-01-01', '2013-12-01')) #Range over which rate ratio calculation will be performed.
 
 #Run analysis, but don't generate HTML report
-#source('synthetic_control_analysis.R')
-#source('synthetic_control_plot.R')
+#source('synthetic_control_analysis.R', local = TRUE)
+#source('synthetic_control_write_results.R', local = TRUE)
+#source('synthetic_control_plot.R', local = TRUE)
 
 #Run analysis and generate HTML report
-source('synthetic_control_report.R')
+source('synthetic_control_report.R', local = TRUE)

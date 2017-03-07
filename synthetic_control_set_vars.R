@@ -3,9 +3,16 @@
 #Clear workspace
 rm(list = ls(all = TRUE))
 gc()
-update_packages = TRUE
 
 library(lubridate)
+
+countries <- c('Brazil', 'Ecuador', 'Chile', 'Mexico', 'US',
+							 'SC1', 'SC2', 'SC3', 'SC_HDI', 'SC_HDI_Region', 'SC_National', 'SC_HDI_No_Pop', 'SC_HDI_Region_No_Pop', 'SC_National_No_Pop', 'SC_HDI_No_Pop_All', 'SC_HDI_Region_No_Pop_All', 'SC_National_No_Pop_All',
+							 'SC_Subchapter_HDI', 'SC_Subchapter_HDI_Region', 'SC_Subchapter_National',
+							 'SC_Dec_Coverage groups', 'SC_Dec_HDI from Muni', 'SC_Dec_HDIxSuperRegion', 'SC_Dec_National', 'SC_Dec_Region', 'SC_Dec/Coverage groups', 'SC_Dec/HDI from Muni', 'SC_Dec/HDIxSuperRegion', 'SC_Dec/National', 'SC_Dec/Region')
+
+for (country in countries) {
+print(country)
 
 #############################
 #                           #
@@ -13,12 +20,14 @@ library(lubridate)
 #                           #
 #############################
 
-country <- 'SC_Dec/HDIxSuperRegion'
 group_name <- 'age_group'
 date_name <- 'date'
 n_seasons <- NULL #12 for monthly, 4 for quarterly, 3 for trimester data.
-exclude <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39', 'J40-47', 'J60-70', 'J80-84', 'J85-J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98')
-exclude <- c(exclude, gsub('-', '_', exclude))
+exclude_covar <- c('ACM-NoPCV', 'J00-06', 'J09-18', 'J20-22', 'J30-39', 'J40-47', 'J60-70', 'J80-84', 'J85-J86', 'J90-94', 'J95-99', 'A30-49', 'G00-09', 'H65-75', 'B95-98')
+exclude_covar <- c(exclude_covar, gsub('-', '_', exclude_covar))
+update_packages <- TRUE
+install_packages <- TRUE
+install_pandoc <- TRUE
 
 ##################################################
 #                                                #
@@ -110,24 +119,5 @@ if (country == 'Brazil') {
 }
 
 #Run analysis and generate report
-rmarkdown::render('synthetic_control_report.Rmd', output_file = paste(country, 'Report.html'), output_dir = output_directory, 
-									params = list(country     = country, 
-																n_seasons   = n_seasons, 
-																exclude     = exclude, 
-																code_change = code_change, 
-																
-																input_directory  = input_directory, 
-																output_directory = output_directory,
-																file_name        = file_name,
-																
-																group_name   = group_name, 
-																date_name    = date_name,
-																outcome_name = outcome_name,
-																denom_name   = denom_name,
-																
-																start_date        = start_date, 
-																intervention_date = intervention_date,
-																end_date          = end_date, 
-																pre_period        = pre_period, 
-																post_period       = post_period, 
-																eval_period       = eval_period))
+source('synthetic_control_report.R', local = TRUE)
+}
