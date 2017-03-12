@@ -304,11 +304,13 @@ shinyServer(function(input, output, session) {
 	
 	#Rate ratios for evaluation period.
 	rr_mean_full <- reactive(t(sapply(quantiles_full(), getRR)))
+	rr_mean_full_intervals <- reactive(data.frame('Estimate (95% CI)' = makeInterval(rr_mean_full()[, 2], rr_mean_full()[, 3], rr_mean_full()[, 1]), check.names = FALSE, row.names = groups()))
 	rr_mean_time <- reactive({
 		rr_mean_time <- t(sapply(quantiles_time(), getRR))
 		colnames(rr_mean_time) <- paste('ITS', colnames(rr_mean_time))
 		return(rr_mean_time)
 	})
+	rr_mean_time_intervals <- reactive(data.frame('ITS Estimate (95% CI)' = makeInterval(rr_mean_time()[, 2], rr_mean_time()[, 3], rr_mean_time()[, 1]), check.names = FALSE, row.names = groups()))
 	
 	cumsum_prevented <- reactive({
 		groups <- groups()
@@ -352,11 +354,11 @@ shinyServer(function(input, output, session) {
 #			cl <- makeForkCluster(n_cores)	
 #		}
 #		
-#		sensitivity_analysis_pred_2  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 2 ))), c('Lower CI', 'Point Estimate', 'Upper CI'))
+#		sensitivity_pred_2  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 2 ))), c('Lower CI', 'Point Estimate', 'Upper CI'))
 #
 #		stopCluster(cl)
 #		gc()
-#		return(sensitivity_analysis_pred_2)
+#		return(sensitivity_pred_2)
 #	})
 #	sensitivity_pred_10 <- reactive({
 #		groups <- groups()
@@ -379,11 +381,19 @@ shinyServer(function(input, output, session) {
 #			cl <- makeForkCluster(n_cores)	
 #		}
 #		
-#		sensitivity_analysis_pred_10  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 10))), c('Lower CI', 'Point Estimate', 'Upper CI'))
+#		sensitivity_pred_10  <- setNames(as.data.frame(t(parSapply(cl, groups, predSensitivityAnalysis, ds = ds, zoo_data = data_full, denom_name = denom_name, outcome_mean = outcome_mean, outcome_sd = outcome_sd, intervention_date = intervention_date, eval_period = eval_period, post_period = post_period, time_points = time_points, n_seasons = n_seasons, n_pred = 10))), c('Lower CI', 'Point Estimate', 'Upper CI'))
 #		
 #		stopCluster(cl)
 #		gc()
-#		return(sensitivity_analysis_pred_10)
+#		return(sensitivity_pred_10)
+#	})
+#	sensitivity_pred_2_intervals  <- reactive({
+#		sensitivity_pred_2 <- sensitivity_pred_2()
+#		data.frame('Estimate (95% CI)' = makeInterval(sensitivity_pred_2[, 2],  sensitivity_pred_2[, 3],  sensitivity_pred_2[, 1]),  row.names = groups, check.names = FALSE)
+#	})
+#	sensitivity_pred_10_intervals <- reactive({
+#		sensitivity_pred_10 <- sensitivity_pred_10()
+#		data.frame('Estimate (95% CI)' = makeInterval(sensitivity_pred_10[, 2], sensitivity_pred_10[, 3], sensitivity_pred_10[, 1]), row.names = groups, check.names = FALSE)
 #	})
 	
 	bad_sensitivity_groups <- reactive(sapply(covars_full(), function (covar) {ncol(covar) <= 3}))
@@ -431,7 +441,21 @@ shinyServer(function(input, output, session) {
 		})
 	})
 	sensitivity_table <- reactive(t(sapply(sensitivity_groups(), sensitivityTable, sensitivity_analysis = sensitivity_analysis_full(), original_rr = rr_mean_full())))
+	sensitivity_table_intervals <- reactive({
+		sensitivity_table <- sensitivity_table()
+		data.frame('Estimate (95% CI)' = makeInterval(sensitivity_table[, 2],  sensitivity_table[, 3],  sensitivity_table[, 1]),
+							 'Top Control 1' = sensitivity_table[, 'Top Control 1'],
+							 'Inclusion Probability of Control 1' = sensitivity_table[, 'Inclusion Probability of Control 1'],
+							 'Control 1 Estimate (95% CI)' = makeInterval(sensitivity_table[, 7],  sensitivity_table[, 8],  sensitivity_table[, 6]),
+							 'Top Control 2' = sensitivity_table[, 'Top Control 2'],
+							 'Inclusion Probability of Control 2' = sensitivity_table[, 'Inclusion Probability of Control 2'],
+							 'Control 2 Estimate (95% CI)' = makeInterval(sensitivity_table[, 12],  sensitivity_table[, 13],  sensitivity_table[, 11]),
+							 'Top Control 3' = sensitivity_table[, 'Top Control 3'],
+							 'Inclusion Probability of Control 3' = sensitivity_table[, 'Inclusion Probability of Control 3'],
+							 'Control 3 Estimate (95% CI)' = makeInterval(sensitivity_table[, 17],  sensitivity_table[, 18],  sensitivity_table[, 16]), check.names = FALSE)
+	})
 	rr_table <- reactive(cbind(rr_mean_time()[!bad_sensitivity_groups(), ], sensitivity_table()))
+	rr_table_intervals <- reactive({cbind('ITS Estimate (95% CI)' = rr_mean_time_intervals()[!bad_sensitivity_groups, ], sensitivity_table_intervals())})
 	
 	incl_probs <- reactive({
 		groups <- groups()
@@ -457,16 +481,16 @@ shinyServer(function(input, output, session) {
 		outcome_plot <- outcome_plot()
 		post_period  <- input_vars()$post_period
 		progress$inc(amount = 0.25, message = 'Synthetic Control Analysis')
-		rr_mean_full <- rr_mean_full()
-		rr_mean_time <- rr_mean_time()
+		rr_mean_full_intervals <- rr_mean_full_intervals()
+		rr_mean_time_intervals <- rr_mean_time_intervals()
 		rr_roll_full <- rr_roll_full()
 		rr_roll_time <- rr_roll_time()
 		inclusion_prob_full <- inclusion_prob_full()
 		incl_probs <- incl_probs()
 		progress$inc(amount = 0.25, message = 'Sensitivity Analysis')
-		sensitivity_table <- sensitivity_table()
-		#sensitivity_analysis_pred_2 <- sensitivity_pred_2()
-		#sensitivity_analysis_pred_10 <- sensitivity_pred_10()
+		sensitivity_table_intervals <- sensitivity_table_intervals()
+		#sensitivity_pred_2_intervals <- sensitivity_pred_2_intervals()
+		#sensitivity_pred_10_intervals <- sensitivity_pred_10_intervals()
 		sensitivity_pred_quantiles <- sensitivity_pred_quantiles()
 		covars_full <- covars_full()
 		pred_quantiles_full <- pred_quantiles_full()
@@ -494,12 +518,12 @@ shinyServer(function(input, output, session) {
 			if (!is.null(names(sparse_groups[sparse_groups])) && length(names(sparse_groups[sparse_groups])) != 0) {
 				renderTable(data.frame('Sparse Groups' = names(sparse_groups[sparse_groups]), check.names = FALSE), caption = 'Sparse Groups', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL))
 			},
-			renderTable(rr_mean_full,                 caption = 'Synthetic Control Quantiles',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
-			renderTable(rr_mean_time,                 caption = 'Interrupted Time Series Quantiles',                              caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
-			renderTable(incl_probs,                   caption = 'Inclusion Probabilities',                                        caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
-			renderTable(sensitivity_table,            caption = 'Weight Sensitivity Analysis',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)#,
-			#renderTable(sensitivity_analysis_pred_2,  caption = 'Predictor Sensitivity Analysis where Number of Predictors = 2',  caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
-			#renderTable(sensitivity_analysis_pred_10, caption = 'Predictor Sensitivity Analysis where Number of Predictors = 10', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)
+			renderTable(rr_mean_full_intervals,                 caption = 'Synthetic Control Quantiles',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			renderTable(rr_mean_time_intervals,                 caption = 'Interrupted Time Series Quantiles',                              caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			renderTable(incl_probs,                             caption = 'Inclusion Probabilities',                                        caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL)),
+			renderTable(sensitivity_table_intervals,            caption = 'Weight Sensitivity Analysis',                                    caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)#,
+			#renderTable(sensitivity_pred_2_intervals,  caption = 'Predictor Sensitivity Analysis where Number of Predictors = 2',  caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE),
+			#renderTable(sensitivity_pred_10_intervals, caption = 'Predictor Sensitivity Analysis where Number of Predictors = 10', caption.placement = getOption('xtable.caption.placement', 'top'), caption.width = getOption('xtable.caption.width', NULL), rownames = TRUE)
 		)
 		tabs <- append(list(summary_tab), tabs)
 		return(tabs)

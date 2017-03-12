@@ -213,6 +213,10 @@ getRR <- function(quantiles) {
 	return(quantiles$rr)
 }
 
+makeInterval <- function(point_estimate, upper_interval, lower_interval, digits = 2) {
+	return(paste(round(as.numeric(point_estimate), digits), ' (', round(as.numeric(lower_interval), digits), ', ', round(as.numeric(upper_interval), digits), ')', sep = ''))
+}
+
 #Plot predictions.
 plotPred <- function(pred_quantiles, time_points, post_period, ylim, outcome_plot, title = NULL, sensitivity_pred_quantiles = NULL, sensitivity_title = 'Sensitivity Plots', plot_sensitivity = FALSE) {
 	
@@ -265,9 +269,9 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
 		zoo_data <- zoo(cbind(outcome = outcome[, group], covar_df), time_points)
 		impact <- doCausalImpact(zoo_data, intervention_date, time_points, n_seasons)
 		
-		sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob, impact = impact)
+		sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob)
 		if (!is.null(mean) && !is.null(sd) && !is.null(eval_period) && !is.null(post_period)) {
-			quantiles <- rrPredQuantiles(impact = sensitivity_analysis[[i]]$impact, mean = mean[group], sd = sd[group], eval_period = eval_period, post_period = post_period)
+			quantiles <- rrPredQuantiles(impact = impact, mean = mean[group], sd = sd[group], eval_period = eval_period, post_period = post_period)
 			sensitivity_analysis[[i]]$rr <- quantiles$rr
 			sensitivity_analysis[[i]]$pred <- quantiles$pred
 		}

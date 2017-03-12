@@ -74,12 +74,12 @@ if (!is.null(names(sparse_groups[sparse_groups])) && length(names(sparse_groups[
 
 ##Synthetic Controls
 ```{r SC}
-kable(rr_mean_full, align = 'c')
+kable(rr_mean_full_intervals, align = 'c')
 ```
 
 ##ITS
 ```{r ITS}
-kable(rr_mean_time, align = 'c')
+kable(rr_mean_time_intervals, align = 'c')
 ```
 
 ##Inclusion Probabilities
@@ -99,16 +99,16 @@ kable(incl_probs, align = 'c')
 
 ##Weight Sensitivity Analysis
 ```{r sensitivity}
-kable(sensitivity_table, align = 'c')
+kable(sensitivity_table_intervals, align = 'c')
 ```
 
 ##Pred Sensitivity Analysis
 ```{r pred_sensitivity_2}
-kable(sensitivity_analysis_pred_2,  align = 'c', caption = 'Number of Predictors per Iteration = 2')
+kable(sensitivity_analysis_pred_2_intervals,  align = 'c', caption = 'Number of Predictors per Iteration = 2')
 ```
 
 ```{r pred_sensitivity_10}
-kable(sensitivity_analysis_pred_10,  align = 'c', caption = 'Number of Predictors per Iteration = 10')
+kable(sensitivity_analysis_pred_10_intervals,  align = 'c', caption = 'Number of Predictors per Iteration = 10')
 ```
 
 ##Plots

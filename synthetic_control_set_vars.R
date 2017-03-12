@@ -9,7 +9,7 @@ library(lubridate)
 countries <- c('Brazil', 'Ecuador', 'Chile', 'Mexico', 'US',
 							 'SC1', 'SC2', 'SC3', 'SC_HDI', 'SC_HDI_Region', 'SC_National', 'SC_HDI_No_Pop', 'SC_HDI_Region_No_Pop', 'SC_National_No_Pop', 'SC_HDI_No_Pop_All', 'SC_HDI_Region_No_Pop_All', 'SC_National_No_Pop_All',
 							 'SC_Subchapter_HDI', 'SC_Subchapter_HDI_Region', 'SC_Subchapter_National',
-							 'SC_Dec_Coverage groups', 'SC_Dec_HDI from Muni', 'SC_Dec_HDIxSuperRegion', 'SC_Dec_National', 'SC_Dec_Region', 'SC_Dec/Coverage groups', 'SC_Dec/HDI from Muni', 'SC_Dec/HDIxSuperRegion', 'SC_Dec/National', 'SC_Dec/Region')
+							 'SC_Dec/Coverage groups', 'SC_Dec/HDI from Muni', 'SC_Dec/HDIxSuperRegion', 'SC_Dec/National', 'SC_Dec/Region')
 
 for (country in countries) {
 print(country)

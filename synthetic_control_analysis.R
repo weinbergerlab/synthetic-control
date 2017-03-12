@@ -1,5 +1,5 @@
 #This is the analysis file. The functions used in this file are cointained in synthetic_control_functions.R
-#There are three model variants: 
+#There are two model variants: 
 # *_full - Full synthetic control model with all covariates (excluding user-specified covariates).
 # *_time - Trend adjustment using the specified variable (e.g., non-respiratory hospitalization or population size) as the denominator.
 
@@ -113,6 +113,9 @@ rr_roll_time <- sapply(quantiles_time, FUN = function(quantiles_time) {quantiles
 rr_mean_full <- t(sapply(quantiles_full, getRR))
 rr_mean_time <- t(sapply(quantiles_time, getRR))
 
+rr_mean_full_intervals <- data.frame('Estimate (95% CI)'     = makeInterval(rr_mean_full[, 2], rr_mean_full[, 3], rr_mean_full[, 1]), check.names = FALSE, row.names = groups)
+rr_mean_time_intervals <- data.frame('ITS Estimate (95% CI)' = makeInterval(rr_mean_time[, 2], rr_mean_time[, 3], rr_mean_time[, 1]), check.names = FALSE, row.names = groups)
+
 colnames(rr_mean_time) <- paste('ITS', colnames(rr_mean_time))
 
 cumsum_prevented <- sapply(groups, FUN = function(group, quantiles) {
@@ -143,6 +146,9 @@ sensitivity_analysis_pred_10 <- setNames(as.data.frame(t(parSapply(cl, groups, p
 
 stopCluster(cl)
 
+sensitivity_analysis_pred_2_intervals  <- data.frame('Estimate (95% CI)' = makeInterval(sensitivity_analysis_pred_2[, 2],  sensitivity_analysis_pred_2[, 3],  sensitivity_analysis_pred_2[, 1]),  row.names = groups, check.names = FALSE)
+sensitivity_analysis_pred_10_intervals <- data.frame('Estimate (95% CI)' = makeInterval(sensitivity_analysis_pred_10[, 2], sensitivity_analysis_pred_10[, 3], sensitivity_analysis_pred_10[, 1]), row.names = groups, check.names = FALSE)
+
 bad_sensitivity_groups <- sapply(covars_full, function (covar) {ncol(covar) <= 3})
 sensitivity_covars_full <- covars_full[!bad_sensitivity_groups]
 sensitivity_ds <- ds[!bad_sensitivity_groups]
@@ -168,4 +174,15 @@ sensitivity_pred_quantiles  <- lapply(sensitivity_analysis_full, FUN = function(
 
 #Table of rate ratios for each sensitivity analysis level
 sensitivity_table <- t(sapply(sensitivity_groups, sensitivityTable, sensitivity_analysis = sensitivity_analysis_full, original_rr = rr_mean_full))
+sensitivity_table_intervals <- data.frame('Estimate (95% CI)' = makeInterval(sensitivity_table[, 2],  sensitivity_table[, 3],  sensitivity_table[, 1]),
+																					'Top Control 1' = sensitivity_table[, 'Top Control 1'],
+																					'Inclusion Probability of Control 1' = sensitivity_table[, 'Inclusion Probability of Control 1'],
+																					'Control 1 Estimate (95% CI)' = makeInterval(sensitivity_table[, 7],  sensitivity_table[, 8],  sensitivity_table[, 6]),
+																					'Top Control 2' = sensitivity_table[, 'Top Control 2'],
+																					'Inclusion Probability of Control 2' = sensitivity_table[, 'Inclusion Probability of Control 2'],
+																					'Control 2 Estimate (95% CI)' = makeInterval(sensitivity_table[, 12],  sensitivity_table[, 13],  sensitivity_table[, 11]),
+																					'Top Control 3' = sensitivity_table[, 'Top Control 3'],
+																					'Inclusion Probability of Control 3' = sensitivity_table[, 'Inclusion Probability of Control 3'],
+																					'Control 3 Estimate (95% CI)' = makeInterval(sensitivity_table[, 17],  sensitivity_table[, 18],  sensitivity_table[, 16]), check.names = FALSE)
 rr_table <- cbind(rr_mean_time[!bad_sensitivity_groups, ], sensitivity_table)
+rr_table_intervals <- cbind('ITS Estimate (95% CI)' = rr_mean_time_intervals[!bad_sensitivity_groups, ], sensitivity_table_intervals)
