@@ -190,7 +190,7 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
 	names(rr) <- c('Lower CI', 'Point Estimate', 'Upper CI')
 	mean_rr <- mean(eval_rr_sum)
 	
-	plot_rr_start <- post_period[1] %m-% months(24)
+	plot_rr_start <- post_period[1] %m-% months(12)
 	roll_rr_indices <- match(plot_rr_start, index(impact$series$response)):match(eval_period[2], index(impact$series$response))
 	if (trend) {
 		obs_full <- exp(denom_data) * exp(impact$series$response * sd + mean)
