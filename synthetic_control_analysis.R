@@ -46,9 +46,17 @@ ds <- setNames(lapply(prelog_data, FUN = logTransform, no_log = c(group_name, da
 time_points <- unique(ds[[1]][, date_name])
 
 #Monthly dummies
-x<-month(as.Date(time_points))
+if(n_seasons==4){x<-quarter(as.Date(time_points))}
+if(n_seasons==12){x<-month(as.Date(time_points))}
+if(n_seasons==3){
+    x.m<-month(as.Date(time_points))
+    x<-x.m
+    x[x.m %in% c(1,2,3,4)]<-1
+    x[x.m %in% c(5,6,7,8)]<-2
+    x[x.m %in% c(9,10,11,12)]<-3
+    }
 season.dummies<-dummy(x)
-season.dummies<-season.dummies[,-12]
+season.dummies<-season.dummies[,-n_seasons]
 
 ds <- lapply(ds, function(ds) {
 	if (!(denom_name %in% colnames(ds))) {

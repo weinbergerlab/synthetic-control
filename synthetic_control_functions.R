@@ -129,7 +129,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 			  regression_prior_df <- 50
 			  exp_r2 <- 0.8
 			  n_pred<-3
-			  prior.inclusion.probabilities = c( rep(1,12),  rep(3/(ncol(x)-11),(ncol(x)-11)) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
+			  prior.inclusion.probabilities = c( rep(1,n_seasons),  rep(3/(ncol(x)-(n_seasons-1)),(ncol(x)-(n_seasons-1))) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
 			  prior2=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
 			  bsts_model <- lm.spike(y ~ x,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
 			  
@@ -173,15 +173,15 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
   names(rr) <- c('Lower CI', 'Point Estimate', 'Upper CI')
   mean_rr <- mean(eval_rr_sum)
   
-  plot_rr_start <- which(time_points==post_period[1]) - 12
+  plot_rr_start <- which(time_points==post_period[1]) - n_seasons
   roll_rr_indices <- match(plot_rr_start, index(impact$observed.y)):match(which(time_points==eval_period[2]), index(impact$observed.y))
   if (trend) {
     obs_full <- exp(denom_data) * exp(impact$observed.y * sd + mean)
   } else {
     obs_full <- exp(impact$observed.y * sd + mean)
   }
-  roll_sum_pred <- roll_sum(t(pred_samples[,roll_rr_indices ]), 12)
-  roll_sum_obs <- roll_sum(obs_full[roll_rr_indices], 12)
+  roll_sum_pred <- roll_sum(t(pred_samples[,roll_rr_indices ]), n_seasons)
+  roll_sum_obs <- roll_sum(obs_full[roll_rr_indices], n_seasons)
   roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
   roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
   quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
@@ -240,7 +240,7 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
   covar_df <- as.matrix(covars[[group]])
   #colnames(covar_df)<-substring(colnames(covar_df), 2)
   
-  incl_prob <- sort(impact[[group]]$inclusion_probs[-c(1:12)])
+  incl_prob <- sort(impact[[group]]$inclusion_probs[-c(1:n_seasons)])
   max_var <- names(incl_prob)[length(incl_prob)]
   max_prob <- round(incl_prob[length(incl_prob)],2)
   sensitivity_analysis <- vector('list', 3)
@@ -274,7 +274,7 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
       sensitivity_analysis[[i]]$pred <- quantiles$pred
   #  }
     
-    incl_prob.sens <- sort(impact_sens$inclusion_probs[-c(1:12)])
+    incl_prob.sens <- sort(impact_sens$inclusion_probs[-c(1:n_seasons)])
     max_var <- names(incl_prob.sens)[length(incl_prob.sens)]
     max_prob <- round(incl_prob.sens[length(incl_prob.sens)],2)
   }
