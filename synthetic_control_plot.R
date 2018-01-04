@@ -5,7 +5,8 @@ for (group in groups) {
 	plots <- list()
 	
 	#View scaled covariates
-	covar_plot <- ggplot(melt(covars_full[[group]], id.vars = NULL), mapping = aes_string(x = rep(time_points, ncol(covars_full[[group]])), y = 'value', group = 'variable', alpha = rep(inclusion_prob_full[[group]][colnames(covars_full[[group]])], each = nrow(covars_full[[group]])))) + 
+	covars.sub<-covars_full[[group]][,-c(1:12)]
+	covar_plot <- ggplot(melt(covars.sub, id.vars = NULL), mapping = aes_string(x = rep(time_points, ncol(covars.sub)), y = 'value', group = 'variable', alpha = rep(inclusion_prob_full[[group]][colnames(covars.sub)], each = nrow(covars.sub)   ))) + 
 		geom_line() + 
 		labs(x = 'Time', y = 'Scaled Covariates') + 
 		ggtitle(paste(group, 'Scaled Covariates Weighted by Inclusion Probability')) +
@@ -17,7 +18,10 @@ for (group in groups) {
 	pred_full_plot <-        plotPred(pred_quantiles_full[, , group], time_points, post_period, min_max, outcome_plot[, group], title = paste(group, 'Synthetic controls estimate'))
 	pred_time_plot <-        plotPred(pred_quantiles_time[, , group], time_points, post_period, min_max, outcome_plot[, group], title = paste(group, 'Interupted time series estimate'))
 	pred_sensitivity_plot <- plotPred(pred_quantiles_full[, , group], time_points, post_period, min_max, outcome_plot[, group], sensitivity_pred_quantiles = sensitivity_pred_quantiles[[group]], sensitivity_title = paste(group, 'Sensitivity Plots'), plot_sensitivity = TRUE)
-		
+	
+	#matplot(pred_quantiles_full[, , 10], ylim=c(0,22000), type='l')	 ##Check
+	#points(prelog_data[[10]]$J12_18)
+	
 	#Plot rolling rate ratio
 	min_max <- c(min(rr_roll_full[, , group], rr_roll_time[, , group]), max(rr_roll_full[, , group], rr_roll_time[, , group]))
 	rr_roll_full_plot <- ggplot(melt(as.data.frame(rr_roll_full[, , group]), id.vars = NULL), mapping = aes_string(x = rep(time_points[(length(time_points) - nrow(rr_roll_full[, , group]) + 1):length(time_points)], ncol(rr_roll_full[, , group])), y = 'value', linetype = 'variable')) + 
@@ -30,7 +34,7 @@ for (group in groups) {
 	rr_roll_time_plot <- ggplot(melt(as.data.frame(rr_roll_time[, , group]), id.vars = NULL), mapping = aes_string(x = rep(time_points[(length(time_points) - nrow(rr_roll_time[, , group]) + 1):length(time_points)], ncol(rr_roll_time[, , group])), y = 'value', linetype = 'variable')) + 
 		geom_line() + geom_hline(yintercept = 1, linetype = 4) +
 		labs(x = 'Time', y = 'Rolling Rate Ratio') + 
-		ggtitle(paste(group, 'ITS Rolling Rate Ratio')) +
+		ggtitle(paste(group, 'TT Rolling Rate Ratio')) +
 		coord_cartesian(ylim = min_max) +
 		theme_bw() +
 		theme(legend.title = element_blank(), legend.position = c(0, 1), legend.justification = c(0, 1), legend.background = element_rect(colour = NA, fill = 'transparent'), plot.title = element_text(hjust = 0.5), panel.grid.major = element_blank(), panel.grid.minor = element_blank())

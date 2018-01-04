@@ -11,10 +11,10 @@ write.csv(rr_roll_full, paste(output_directory, country, '_rr_roll_full.csv', se
 write.csv(rr_roll_time, paste(output_directory, country, '_rr_roll_time.csv', sep = ''))
 
 #Output the sensitivity analysis rate ratio estimates to a new file.
-write.csv(sensitivity_analysis_pred_2,  paste(output_directory, country, '_sensitivity_analysis_pred_2.csv',  sep = ''))
-write.csv(sensitivity_analysis_pred_10, paste(output_directory, country, '_sensitivity_analysis_pred_10.csv', sep = ''))
-write.csv(sensitivity_analysis_pred_2_intervals,  paste(output_directory, country, '_sensitivity_analysis_pred_2_intervals.csv',  sep = ''))
-write.csv(sensitivity_analysis_pred_10_intervals, paste(output_directory, country, '_sensitivity_analysis_pred_10_intervals.csv', sep = ''))
+# write.csv(sensitivity_analysis_pred_2,  paste(output_directory, country, '_sensitivity_analysis_pred_2.csv',  sep = ''))
+# write.csv(sensitivity_analysis_pred_10, paste(output_directory, country, '_sensitivity_analysis_pred_10.csv', sep = ''))
+# write.csv(sensitivity_analysis_pred_2_intervals,  paste(output_directory, country, '_sensitivity_analysis_pred_2_intervals.csv',  sep = ''))
+# write.csv(sensitivity_analysis_pred_10_intervals, paste(output_directory, country, '_sensitivity_analysis_pred_10_intervals.csv', sep = ''))
 
 #Tables for rate ratios.
 write.csv(sensitivity_table, paste(output_directory, country, '_sensitivity_table.csv', sep = ''))
