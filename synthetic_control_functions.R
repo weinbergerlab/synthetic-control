@@ -158,7 +158,7 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
   }
   
   pred <- t(apply(pred_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-  eval_indices <- match(which(time_points==eval_period[1]), index(impact$observed.y)):match(which(time_points==eval_period[2]), index(impact$observed.y))
+  eval_indices <- match(which(time_points==eval_period[1]), (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
   
   pred_eval_sum <- rowSums(pred_samples[,eval_indices ])
   
@@ -174,7 +174,7 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
   mean_rr <- mean(eval_rr_sum)
   
   plot_rr_start <- which(time_points==post_period[1]) - n_seasons
-  roll_rr_indices <- match(plot_rr_start, index(impact$observed.y)):match(which(time_points==eval_period[2]), index(impact$observed.y))
+  roll_rr_indices <- match(plot_rr_start, (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
   if (trend) {
     obs_full <- exp(denom_data) * exp(impact$observed.y * sd + mean)
   } else {
