@@ -1,4 +1,4 @@
-source('synthetic_control_functions_Shiny.R', local=TRUE)
+source('synthetic_control_functions_Shiny.R')
 
 packages <- c('parallel', 'shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
 packageHandler(packages, update_packages, install_packages)
