@@ -1,13 +1,19 @@
-library(shiny, quietly = TRUE)
-library(splines, quietly = TRUE)
-library(lubridate, quietly = TRUE)
-library(BoomSpikeSlab, quietly = TRUE)
-library(parallel, quietly = TRUE)
-library(RcppRoll, quietly = TRUE)
-library(reshape, quietly = TRUE)
-library(ggplot2, quietly = TRUE)
-library(dummies, quietly=TRUE)
-source('synthetic_control_functions_Shiny.R')
+source('synthetic_control_functions_Shiny.R', local=TRUE)
+
+packages <- c('parallel', 'shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
+packageHandler(packages, update_packages, install_packages)
+sapply(packages, library, quietly = TRUE, character.only = TRUE)
+
+
+# library(shiny, quietly = TRUE)
+# library(splines, quietly = TRUE)
+# library(lubridate, quietly = TRUE)
+# library(BoomSpikeSlab, quietly = TRUE)
+# library(parallel, quietly = TRUE)
+# library(RcppRoll, quietly = TRUE)
+# library(reshape, quietly = TRUE)
+# library(ggplot2, quietly = TRUE)
+# library(dummies, quietly=TRUE)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB

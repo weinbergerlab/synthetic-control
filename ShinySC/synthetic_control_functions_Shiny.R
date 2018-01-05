@@ -1,4 +1,6 @@
 #This is the function file. It is called directly from the analysis file.
+update_packages  <- TRUE #Whether to update outdated packages.
+install_packages <- TRUE #Whether to install missing packages.
 packageHandler <- function(packages, update_packages = TRUE, install_packages = TRUE) {
 	bad_packages <- list()
 	for (package in packages) {
