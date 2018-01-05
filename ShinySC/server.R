@@ -17,7 +17,7 @@ sapply(packages, library, quietly = TRUE, character.only = TRUE)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
-n_cores <- detectCores()
+n_cores <- detectCores() -1
 
 shinyServer(function(input, output, session) {
 	
