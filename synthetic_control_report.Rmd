@@ -102,15 +102,6 @@ kable(incl_probs, align = 'c')
 kable(sensitivity_table_intervals, align = 'c')
 ```
 
-##Pred Sensitivity Analysis
-```{r pred_sensitivity_2}
-kable(sensitivity_analysis_pred_2_intervals,  align = 'c', caption = 'Number of Predictors per Iteration = 2')
-```
-
-```{r pred_sensitivity_10}
-kable(sensitivity_analysis_pred_10_intervals,  align = 'c', caption = 'Number of Predictors per Iteration = 10')
-```
-
 ##Plots
 ```{r plots, results = 'asis'}
 source('synthetic_control_plot.R', local = TRUE)
