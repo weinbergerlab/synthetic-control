@@ -137,7 +137,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 	
 	predict.bsts<-predict(bsts_model, newdata=cbind(1,x), burn=n_iter*0.1, mean.only=FALSE)
 	coef.bsts<-SummarizeSpikeSlabCoefficients(bsts_model$beta, burn=n_iter*0.1, order=FALSE)
-	inclusion_probs<-coef.bsts[,5]
+	inclusion_probs<- coef.bsts[,5]
 	names(inclusion_probs)<-substring(names(inclusion_probs),2)
 	impact <- list(predict.bsts,inclusion_probs, post.period.response = post_period_response, observed.y=zoo_data[, 1])
 	names(impact)<-c('predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
