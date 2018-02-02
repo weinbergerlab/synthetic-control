@@ -1,18 +1,19 @@
 source('synthetic_control_functions_Shiny.R', local=FALSE)
 
-#packages <- c( 'shiny', 'splines2',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
-#ipak <- function(pkg){
-#  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
-#  if (length(new.pkg)) 
-#    install.packages(new.pkg, dependencies = TRUE)
-#  sapply(pkg, require, character.only = TRUE)
-#}
-#ipak(packages)
+# packages <- c('parallel', 'shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
+# ipak <- function(pkg){
+#   new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+#   if (length(new.pkg)) 
+#     install.packages(new.pkg, dependencies = TRUE)
+#   sapply(pkg, require, character.only = TRUE)
+# }
+# ipak(packages)
 
  library(shiny, quietly = TRUE)
- library(splines2, quietly = TRUE)
+ library(splines, quietly = TRUE)
  library(lubridate, quietly = TRUE)
  library(BoomSpikeSlab, quietly = TRUE)
+
  library(RcppRoll, quietly = TRUE)
  library(reshape, quietly = TRUE)
  library(ggplot2, quietly = TRUE)
@@ -20,7 +21,7 @@ source('synthetic_control_functions_Shiny.R', local=FALSE)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
-#n_cores <- detectCores()
+
 
 shinyServer(function(input, output, session) {
 	
@@ -303,7 +304,7 @@ shinyServer(function(input, output, session) {
 		time_points <- input_vars()$time_points
 		n_seasons <- input_vars()$n_seasons
 		
-		quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)}), groups)
+		quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], time_points=time_points, denom_data = ds[[group]][, denom_name],n_seasons=n_seasons, mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)}), groups)
 		return(quantiles_full)
 	})
 	quantiles_time <- reactive({
@@ -319,7 +320,7 @@ shinyServer(function(input, output, session) {
 		time_points <- input_vars()$time_points
 		n_seasons <- input_vars()$n_seasons
 		
-		quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
+		quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], time_points=time_points,n_seasons=n_seasons,sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
 		return(quantiles_time)
 	})
 	
@@ -382,7 +383,7 @@ shinyServer(function(input, output, session) {
 		post_period <- input_vars()$post_period
 		time_points <- input_vars()$time_points
 		
-		sensitivity_analysis_full <- setNames(lapply(sensitivity_groups(), weightSensitivityAnalysis, covars = sensitivity_covars_full(), ds = sensitivity_ds(), impact = sensitivity_impact_full(), time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome(),  eval_period = eval_period, post_period = post_period), sensitivity_groups())
+		sensitivity_analysis_full <- setNames(lapply(sensitivity_groups(), weightSensitivityAnalysis, covars = sensitivity_covars_full(), outcome_sd=outcome_sd, outcome_mean=outcome_mean, n_seasons = n_seasons, time_points=time_points, ds = sensitivity_ds(), impact = sensitivity_impact_full(), intervention_date = intervention_date,  outcome = outcome(),  eval_period = eval_period, post_period = post_period), sensitivity_groups())
 		#	impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
 		
 		#stopCluster(cl)
