@@ -1,0 +1,83 @@
+Using AWS Ubuntu 14.04 to host Synthetic Control Shiny app:
+1. Log into AWS instance using ssh.
+2. Install R. 
+    * codename=$(lsb_release -c -s)  
+    * echo "deb http://lib.stat.cmu.edu/R/CRAN/ $codename/" | sudo tee -a
+    * sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9  
+    * sudo add-apt-repository ppa:marutter/rdev
+    * sudo apt-get update
+    * sudo apt-get upgrade
+    * sudo apt-get install r-base
+    * sudo apt-get install r-base-dev
+3. Download additional components.
+    1. curl
+        * sudo apt-get -y build-dep libcurl4-gnutls-dev
+        * sudo apt-get -y install libcurl4-gnutls-dev
+    2. xml 
+        * sudo apt-get install libxml2-dev
+    3. g++/gfortran
+        * sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+        * sudo apt-get update
+        * sudo apt-get install g++-4.9
+        * sudo apt-get install gfortran-4.9
+    4. cairo 
+        * sudo apt-get install libcairo2-dev
+    5. xt
+        * sudo apt-get install libxt-dev
+    6. mariadbclient
+        * sudo apt-get install libmariadbclient-dev
+    7. pq
+        * sudo apt-get install libpq-dev
+4. Set the default g++/gfortran compilers.
+    * sudo rm /usr/bin/cpp /usr/bin/gcc /usr/bin/g++ /usr/bin/gfortran
+    * sudo ln -s /usr/bin/cpp-4.9 /usr/bin/cpp
+    * sudo ln -s /usr/bin/gcc-4.9 /usr/bin/gcc
+    * sudo ln -s /usr/bin/g++-4.9 /usr/bin/g++
+    * sudo ln -s /usr/bin/gfortran-4.9 /usr/bin/gfortran
+5. Add swap space.
+    1. Create file.
+        * sudo su
+        * dd if=/dev/zero of=/swapfile1 bs=1024 count=2097152
+        * chmod 0600 /swapfile1
+        * mkswap /swapfile1
+        * swapon /swapfile1
+    2. Open the file in vi.
+        * vi /etc/fstab
+    3. Append.
+        * /swapfile1 none swap sw 0 0 (Seed vi commands here: https://www.cs.colostate.edu/helpdocs/vi.html)
+    4. Close the file.
+        * :wq
+6. Launch R.
+    * sudo R
+7. Install relevant packages (devtools, date, Boom, bsts, shiny, dplyr).
+    * install.packages(‘devtools’, repos = ‘http://cran.rstudio.com/‘, dependencies = TRUE) 
+    * install.packages(‘date’, repos = ‘http://cran.rstudio.com/‘, dependencies = TRUE)
+    * Install.packages(‘Boom’, repos = ’http://cran.rstudio.com/', dependencies = TRUE)
+    * install.packages(‘bsts’, repos = ‘http://cran.rstudio.com/‘, dependencies = TRUE)
+    * install.packages(‘shiny’, repos = ‘http://cran.rstudio.com/‘, dependencies = TRUE)
+    * install.packages(‘dplyr’, repos = ‘http://cran.rstudio.com/‘, dependencies = TRUE)
+8. Install Causal Impact.
+    * devtools::install_github(‘google/CausalImpact’)
+9. Install Shiny Server.
+    * sudo apt-get install gdebi-core
+    * wget https://download3.rstudio.org/ubuntu-12.04/x86_64/shiny-server-1.4.4.801-amd64.deb
+    * sudo gdebi shiny-server-1.4.4.801-amd64.deb
+10. Log out of AWS instance and copy* required files to the AWS host.
+    * scp -i /path/my-key-pair.pem /path/app-folder-name ec2-user@ec2-address:~
+11. Log back into AWS instance and move app to proper directory
+    * sudo mv app-folder-name /srv/shiny-server
+*Note: A bug prevents Shiny Server from recognizing files transferred via secure copy (scp). To work around this, create the desired directory (using sudo mkdir), server.R, ui.R, and any other required .R files (using sudo vi fileName.R), and copy-paste the code from the desired files into these new files. Shiny Server will recognize and be able to run the newly copied files. 
+*If having issues with Rplots.pdf, change the ownership of the shiny-server folder to the shiny-server application (using sudo chown -R shiny:shiny /srv/shiny-server)
+
+Sources: 
+https://pythonandr.com/2015/04/27/upgrading-to-r-3-2-0-on-ubuntu/
+http://askubuntu.com/questions/372248/downloaded-g-4-8-from-the-ppa-but-cant-set-it-as-default
+http://stackoverflow.com/questions/20671814/non-zero-exit-status-r-3-0-1-xml-and-rcurl
+http://www.cyberciti.biz/faq/linux-add-a-swap-file-howto/
+https://www.cs.colostate.edu/helpdocs/vi.html
+http://stackoverflow.com/questions/23642353/error-message-installing-cairo-package-in-r
+http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AccessingInstancesLinux.html
+https://www.rstudio.com/products/shiny/download-server/
+http://docs.rstudio.com/shiny-server/
+https://cran.r-project.org/mirrors.html
+http://askubuntu.com/questions/618474/how-to-install-the-latest-gcurrently-5-1-in-ubuntucurrently-14-04
