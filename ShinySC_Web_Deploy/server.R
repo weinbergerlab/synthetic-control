@@ -20,7 +20,7 @@ source('synthetic_control_functions_Shiny.R', local=FALSE)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
-n_cores <- detectCores()
+#n_cores <- detectCores()
 
 shinyServer(function(input, output, session) {
 	
