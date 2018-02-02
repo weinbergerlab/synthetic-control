@@ -1,6 +1,6 @@
 source('synthetic_control_functions_Shiny.R', local=FALSE)
 
-packages <- c('parallel', 'shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
+packages <- c('shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
 ipak <- function(pkg){
   new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
   if (length(new.pkg)) 
