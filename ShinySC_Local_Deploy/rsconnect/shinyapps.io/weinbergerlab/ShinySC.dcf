@@ -1,10 +1,12 @@
 name: ShinySC
 title: ShinySC
+username:
 account: weinbergerlab
 server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
 appId: 270041
-bundleId: 1204983
+bundleId: 1204028
 url: https://weinbergerlab.shinyapps.io/ShinySC/
-when: 1517594439.32835
+when: 1517546508.6176
 asMultiple: FALSE
 asStatic: FALSE
