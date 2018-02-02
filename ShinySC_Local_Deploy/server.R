@@ -21,7 +21,7 @@ ipak(packages)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
-n_cores <- detectCores()
+#n_cores <- detectCores()
 
 shinyServer(function(input, output, session) {
 	
