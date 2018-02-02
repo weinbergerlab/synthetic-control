@@ -40,7 +40,7 @@ makeCovars <- function(ds_group, code_change, intervention_date,season.dummies, 
     #Eliminates effects from 2008 coding change
     covars <- ds_group[, 4:ncol(ds_group)]
     month_i <- as.factor(as.numeric(format(time_points, '%m')))
-    spline <- setNames(as.data.frame(bs(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
+    spline <- setNames(as.data.frame(bSpline(1:nrow(covars), knots = 5, degree = 3)), c('bs1', 'bs2', 'bs3', 'bs4'))
     year_2008 <- numeric(nrow(covars))
     year_2008[1:nrow(covars) >= match(as.Date('2008-01-01'), time_points)] <- 1
     data <- cbind.data.frame(year_2008, spline, month_i)
