@@ -1,9 +1,13 @@
-source('synthetic_control_functions_Shiny.R')
+source('synthetic_control_functions_Shiny.R', local=FALSE)
 
 packages <- c('parallel', 'shiny', 'splines',  'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
-packageHandler(packages, update_packages, install_packages)
-sapply(packages, library, quietly = TRUE, character.only = TRUE)
-
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+ipak(packages)
 
 # library(shiny, quietly = TRUE)
 # library(splines, quietly = TRUE)
@@ -17,7 +21,7 @@ sapply(packages, library, quietly = TRUE, character.only = TRUE)
 
 #Set max file size
 options(shiny.maxRequestSize = 100 * 1024 ^ 2) #100MB
-n_cores <- detectCores() -1
+n_cores <- detectCores()
 
 shinyServer(function(input, output, session) {
 	
@@ -246,17 +250,17 @@ shinyServer(function(input, output, session) {
 		n_seasons <- input_vars()$n_seasons
 		season.dummies <- input_vars()$season.dummies
 		
-		if (Sys.info()['sysname'] == 'Windows') {
-			cl <- makeCluster(n_cores)
-			clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE)})
-			clusterExport(cl, c('doCausalImpact',  'intervention_date', 'time_points', 'n_seasons','season.dummies'), environment())
-		} else {
-			cl <- makeForkCluster(n_cores)
-		}
+		# if (Sys.info()['sysname'] == 'Windows') {
+		# 	cl <- makeCluster(n_cores)
+		# 	clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE)})
+		# 	clusterExport(cl, c('doCausalImpact',  'intervention_date', 'time_points', 'n_seasons','season.dummies'), environment())
+		# } else {
+		# 	cl <- makeForkCluster(n_cores)
+		# }
 		
-		impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
+		impact_full <- setNames(lapply( data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
 		
-		stopCluster(cl)
+		#stopCluster(cl)
 		gc()
 		return(impact_full)
 	})
@@ -268,17 +272,17 @@ shinyServer(function(input, output, session) {
 		time_points <- input_vars()$time_points
 		n_seasons <- input_vars()$n_seasons
 		
-		if (Sys.info()['sysname'] == 'Windows') {
-			cl <- makeCluster(n_cores)
-			clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE)})
-			clusterExport(cl, c('doCausalImpact',  'intervention_date', 'time_points', 'n_seasons'), environment())
-		} else {
-			cl <- makeForkCluster(n_cores)
-		}
+		# if (Sys.info()['sysname'] == 'Windows') {
+		# 	cl <- makeCluster(n_cores)
+		# 	clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE)})
+		# 	clusterExport(cl, c('doCausalImpact',  'intervention_date', 'time_points', 'n_seasons'), environment())
+		# } else {
+		# 	cl <- makeForkCluster(n_cores)
+		# }
 		
-		impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), groups)
+		impact_time <- setNames(lapply( data_time, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons, trend = TRUE), groups)
 		
-		stopCluster(cl)
+	#	stopCluster(cl)
 		gc()
 		return(impact_time)
 	})
@@ -300,7 +304,7 @@ shinyServer(function(input, output, session) {
 		time_points <- input_vars()$time_points
 		n_seasons <- input_vars()$n_seasons
 		
-		quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], time_points=time_points,n_seasons=n_seasons,denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)}), groups)
+		quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)}), groups)
 		return(quantiles_full)
 	})
 	quantiles_time <- reactive({
@@ -316,7 +320,7 @@ shinyServer(function(input, output, session) {
 		time_points <- input_vars()$time_points
 		n_seasons <- input_vars()$n_seasons
 		
-		quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]],time_points=time_points, n_seasons=n_seasons, denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
+		quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
 		return(quantiles_time)
 	})
 	
@@ -370,11 +374,6 @@ shinyServer(function(input, output, session) {
 	
 	sensitivity_analysis_full <- reactive({
 	  
-	  sensitivity_groups <- sensitivity_groups()
-		sensitivity_covars_full <- sensitivity_covars_full()
-		sensitivity_ds <- sensitivity_ds()
-		sensitivity_impact_full <- sensitivity_impact_full()
-		outcome <- outcome()
 		outcome_mean <- outcome_mean()
 		outcome_sd <- outcome_sd()
 		
@@ -384,22 +383,10 @@ shinyServer(function(input, output, session) {
 		post_period <- input_vars()$post_period
 		time_points <- input_vars()$time_points
 		
-		
-		#Weight Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
-		if (Sys.info()['sysname'] == 'Windows') {
-		  cl <- makeCluster(n_cores)
-		  clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE);library(RcppRoll, quietly = TRUE)})
-		  clusterExport(cl, c('sensitivity_ds', 'doCausalImpact', 'weightSensitivityAnalysis', 'rrPredQuantiles', 'sensitivity_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
-		} else {
-		  cl <- makeForkCluster(n_cores)	
-		}
-		
-	#	clusterExport(cl, c('doCausalImpact',  rrPredQuantiles','intervention_date', 'time_points', 'n_seasons','season.dummies'), environment())
-		
-		sensitivity_analysis_full <- setNames(parLapply(cl, sensitivity_groups, weightSensitivityAnalysis, covars = sensitivity_covars_full, ds = sensitivity_ds, impact = sensitivity_impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome,  eval_period = eval_period, post_period = post_period), sensitivity_groups)
+		sensitivity_analysis_full <- setNames(lapply(sensitivity_groups(), weightSensitivityAnalysis, covars = sensitivity_covars_full(), ds = sensitivity_ds(), impact = sensitivity_impact_full(), time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome(),  eval_period = eval_period, post_period = post_period), sensitivity_groups())
 		#	impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
 		
-		stopCluster(cl)
+		#stopCluster(cl)
 		gc()
 		return(sensitivity_analysis_full)
 		
