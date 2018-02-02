@@ -40,7 +40,5 @@ For the US, cells with fewer than 10 counts are replaced with 9999 due to privac
 ###SHINY app
 For a point-and-click interface, there is a Shiny app (ShinySC) that can be either run in RStudio or deployed on the web. Open the server.R or ui.R files in Rstudio and click "Run App" button
 
-###To run on Shiny the web: The synthetic control applet is a resource-intensive process. To handle concurrent users, there are multiple instances, listed below. Note that as computational resources are limited, not any size of dataset can be processed. If an analysis cannot be completed using the applet, download the analysis files and run on a machine you have access to.
-https://weinbergerlab.shinyapps.io/synthetic_control/
-https://weinbergerlab.shinyapps.io/synthetic_control_1/
-https://weinbergerlab.shinyapps.io/synthetic_control_2/
+###To run on Shiny the web: The synthetic control applet is a resource-intensive process. Note: the Shiny version of the code is non-parallel, so it is computationally slower than the synthetic_control_run.R version.
+https://weinbergerlab.shinyapps.io/ShinySC/
