@@ -1,7 +1,9 @@
 # Synthetic Control
+#GETTING STARTED:
+#Save all of the files to your desktop and open the synthetic_control_run.R file. Set the working directory as the "main analysis components" folder. To use the sample Brazil data (found in Datasets for PNAS), use all of the default settings, or specficy your data file. Change the dates as needed to set the training and evaluation periods.
 
-##Analysis
-The analysis code is split into several different files. The code in "synthetic_control_run.R" provides a template for defining initial constants, running analyses, and generating reports. The minimum files needed to run an analysis are the "synthetic_control_analysis.R" and "synthetic_control_functions.R", which contain the analysis code and functions necessary to run the analysis. Make sure these files, along with any additional code files, are in the same directory. See the table below for a short description of each file.
+##Analysis files
+If you want to dig deeper, the functions and analysis code are found in the folder "main analysis components." The analysis code is split into several different files. The code in "synthetic_control_run.R" provides a template for defining initial constants, running analyses, and generating reports. The minimum files needed to run an analysis are the "synthetic_control_analysis.R" and "synthetic_control_functions.R", which contain the analysis code and functions necessary to run the analysis. Make sure these files, along with any additional code files, are in the same directory. See the table below for a short description of each file.
 
 | File Name | File Dependencies | Details |
 | --- | --- | ------------ |
@@ -38,7 +40,6 @@ The sample data, found in the folder "Datasets for PNAS", are CSV files formatte
 For the US, cells with fewer than 10 counts are replaced with 9999 due to privacy considerations.
 
 ###SHINY app
-For a point-and-click interface, there is a Shiny app (ShinySC) that can be either run in RStudio or deployed on the web. Open the server.R or ui.R files in Rstudio and click "Run App" button
-
-###To run on Shiny the web: The synthetic control applet is a resource-intensive process. Note: the Shiny version of the code is non-parallel, so it is computationally slower than the synthetic_control_run.R version.
-https://weinbergerlab.shinyapps.io/ShinySC/
+For a point-and-click interface, there is a Shiny app (ShinySC) that can be either run in RStudio (ShinySC_Local_Deploy folder) or deployed on the web (ShinySC_Web_Deploy). Open the server.R or ui.R files in Rstudio and click "Run App" button
+Note: the Shiny version of the code is non-parallel, so it is computationally slower than the synthetic_control_run.R version.
+You can access a version of the app at https://weinbergerlab.shinyapps.io/ShinySC/, but please note that this deployment is often unstable.
