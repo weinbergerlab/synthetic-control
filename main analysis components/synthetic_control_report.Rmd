@@ -1,0 +1,109 @@
+---
+title: "Synthetic Controls"
+date: 'Report generated `r format(Sys.time(), "%A, %B %d, %Y")`'
+output:
+ html_document:
+  toc: TRUE
+  toc_float: TRUE
+params:
+ update_packages: TRUE
+ install_packages: TRUE
+ country: ''
+ n_seasons: ''
+ exclude_covar: ''
+ exclude_group: ''
+ code_change: FALSE
+ input_directory: ''
+ output_directory: ''
+ file_name: ''
+ group_name: ''
+ date_name: ''
+ outcome_name: ''
+ denom_name: ''
+ start_date: ''
+ intervention_date: ''
+ end_date: ''
+ pre_period: ''
+ post_period: ''
+ eval_period: ''
+---
+
+```{r setup, include = FALSE}
+library('knitr', quietly = TRUE)
+opts_chunk$set(echo = FALSE)
+```
+
+```{r params, include = FALSE, eval = FALSE}
+update_packages <- params$update_packages
+install_packages <- params$install_packages
+
+country       <- params$country
+n_seasons     <- params$n_seasons
+exclude_covar <- params$exclude_covar
+exclude_group <- params$exclude_group
+code_change   <- params$code_change
+
+input_directory  <- params$input_directory
+output_directory <- params$output_directory
+file_name        <- params$file_name
+
+group_name   <- params$group_name
+date_name    <- params$date_name
+outcome_name <- params$outcome_name
+denom_name   <- params$denom_name
+
+start_date        <- params$start_date
+intervention_date <- params$intervention_date
+end_date          <- params$end_date
+pre_period        <- params$pre_period
+post_period       <- params$post_period
+eval_period       <- params$eval_period
+```
+
+```{r analysis, include = FALSE}
+source('synthetic_control_analysis.R', local = TRUE)
+```
+
+#`r country` Results
+
+```{r sparse}
+if (!is.null(names(sparse_groups[sparse_groups])) && length(names(sparse_groups[sparse_groups])) != 0) {
+	kable(data.frame('Sparse Groups' = names(sparse_groups[sparse_groups]), check.names = FALSE), align = 'c')
+}
+```
+
+##Synthetic Controls
+```{r SC}
+kable(rr_mean_full_intervals, align = 'c')
+```
+
+##ITS
+```{r ITS}
+kable(rr_mean_time_intervals, align = 'c')
+```
+
+##Inclusion Probabilities
+```{r incl, include = FALSE}
+incl_probs <- NULL
+	for (group in groups) {
+			incl_prob <- -1*sort(-impact_full[[group]]$inclusion_probs[-c(1:n_seasons)])[1:3]
+			incl_prob <- data.frame('Group' = group, 'Greatest Inclusion Variable' = names(incl_prob)[1], 'Greatest Inclusion Probability' = incl_prob[1], 'Second Greatest Inclusion Variable' = names(incl_prob)[2], 'Second Greatest Inclusion Probability' = incl_prob[2], 'Third Greatest Inclusion Variable' = names(incl_prob)[3], 'Third Greatest Inclusion Probability' = incl_prob[3], check.names = FALSE)
+			incl_probs <- rbind(incl_probs, incl_prob)
+		}
+rownames(incl_probs) <- NULL
+```
+
+```{r incl_table}
+kable(incl_probs, align = 'c')
+```
+
+##Weight Sensitivity Analysis
+```{r sensitivity}
+kable(sensitivity_table_intervals, align = 'c')
+```
+
+
+##Plots
+```{r plots, results = 'asis'}
+source('synthetic_control_plot.R', local = TRUE)
+```

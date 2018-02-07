@@ -8,7 +8,7 @@ gc()
 
 #Set the working directory
 #This step only works as written if this file is run using the source() command. Otherwise, skip this step and set manually.
-setwd('C:\\Users\\XXXX\\Desktop\\synthetic-control-master')  #directory where .Rmd file is saved
+setwd('C:\\Users\\DMW63\\Desktop\\synthetic-control-master\\main analysis components')  #directory where .Rmd file is saved
 
 #Used to check for relevant packages and update them if out of date or install them if not installed.
 update_packages  <- TRUE #Whether to update outdated packages.
