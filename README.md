@@ -8,7 +8,6 @@ If you want to dig deeper, the functions and analysis code are found in the fold
 | File Name | File Dependencies | Details |
 | --- | --- | ------------ |
 |  synthetic_control_run.R | synthetic_control_analysis.R, synthetic_control_functions.R, synthetic_control_plot.R, synthetic_control_write_results.R, synthetic_control_report.R, synthetic_control_report.Rmd | A template for running analyses containing a list of constants (and a breif description of each). Demonstrates how other relevant analysis files should be called. |
-
 |  synthetic_control_analysis.R | synthetic_control_functions.R | The main analysis code. |
 |  synthetic_control_functions.R | N/A | Contains functions for the main analysis. |
 |  synthetic_control_plot.R | synthetic_control_analysis.R, synthetic_control_functions.R | Plots results from analysis. |
