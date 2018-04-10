@@ -8,7 +8,7 @@ gc()
 
 #Set the working directory
 #This step only works as written if this file is run using the source() command. Otherwise, skip this step and set manually.
-setwd('C:\\Users\\dmw63\\Documents\\GitHub\\synthetic-control\\main analysis components\\')  #directory where .Rmd file is saved
+setwd('~/synthetic-control-master/main analysis components')  #directory where .Rmd file is saved
 
 #Used to check for relevant packages and update them if out of date or install them if not installed.
 update_packages  <- TRUE #Whether to update outdated packages.
@@ -22,8 +22,8 @@ exclude_covar <- c()      #User-defined list of covariate columns to exclude fro
 exclude_group <- c()      #User-defined list of groups to exclude from analyses.
 code_change   <- TRUE     #Used for Brazil data. Set to TRUE to adjust for year 2008 coding changes; otherwise, set to FALSE.
 
-input_directory  <- '..\\Datasets for PNAS\\' #Directory (or URL) containing input data file.
-output_directory <- '..\\Results'   #Directory where results will be saved.
+input_directory  <- '../Datasets for PNAS\\' #Directory (or URL) containing input data file.
+output_directory <- '../Results'   #Directory where results will be saved.
 output_directory <- paste(output_directory, format(Sys.time(), '%Y-%m-%d-%H%M%S'), '/', sep = '')                     #Adds a subfolder to output directory to organize results by date and time run.
 file_name        <- 'Dataset S1 Brazil.csv'                                                                       #Name of file containing data for analysis. Must be a .csv file.
 
