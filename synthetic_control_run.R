@@ -8,6 +8,7 @@ gc()
 
 #Set the working directory
 #This step only works as written if this file is run using the source() command. Otherwise, skip this step and set manually.
+###Should be set as the directory where .Rmd file is saved  ####
 setwd('~/synthetic-control-master/main analysis components')  #directory where .Rmd file is saved
 
 #Used to check for relevant packages and update them if out of date or install them if not installed.
