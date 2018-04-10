@@ -21,7 +21,10 @@ country       <- 'Brazil' #Country or region name.
 n_seasons     <- 12       #Number of months (seasons) per year. 12 for monthly, 4 for quarterly, 3 for trimester data.
 exclude_covar <- c()      #User-defined list of covariate columns to exclude from all analyses.
 exclude_group <- c()      #User-defined list of groups to exclude from analyses.
-code_change   <- TRUE     #Used for Brazil data. Set to TRUE to adjust for year 2008 coding changes; otherwise, set to FALSE.
+if(country=="Brazil"){code_change   <- TRUE     #Used for Brazil data. Set to TRUE to adjust for year 2008 coding changes; otherwise, set to FALSE.
+}else{
+  code_change   <- FALSE
+}
 
 input_directory  <- '../Datasets for PNAS\\' #Directory (or URL) containing input data file.
 output_directory <- '../Results'   #Directory where results will be saved.
