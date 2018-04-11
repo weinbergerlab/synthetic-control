@@ -26,7 +26,7 @@ if(country=="Brazil"){code_change   <- TRUE     #Used for Brazil data. Set to TR
   code_change   <- FALSE
 }
 
-input_directory  <- '../Datasets for PNAS\\' #Directory (or URL) containing input data file.
+input_directory  <- '../Datasets for PNAS/' #Directory (or URL) containing input data file.
 output_directory <- '../Results'   #Directory where results will be saved.
 output_directory <- paste(output_directory, format(Sys.time(), '%Y-%m-%d-%H%M%S'), '/', sep = '')                     #Adds a subfolder to output directory to organize results by date and time run.
 file_name        <- 'Dataset S1 Brazil.csv'                                                                       #Name of file containing data for analysis. Must be a .csv file.
