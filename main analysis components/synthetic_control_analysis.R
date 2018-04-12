@@ -98,7 +98,7 @@ data_time <- setNames(lapply(groups, makeTimeSeries, outcome = outcome_offset, c
 
 #Start Cluster for CausalImpact (the main analysis function).
 cl <- makeCluster(n_cores)
-clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE)})
+clusterEvalQ(cl, {library(bsts, quietly = TRUE); library(lubridate, quietly = TRUE)})
 clusterExport(cl, c('doCausalImpact',  'intervention_date', 'time_points', 'n_seasons'), environment())
 
 impact_full <- setNames(parLapply(cl, data_full, doCausalImpact, intervention_date = intervention_date, time_points = time_points, n_seasons = n_seasons), groups)
