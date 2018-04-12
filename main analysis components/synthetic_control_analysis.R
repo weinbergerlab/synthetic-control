@@ -179,7 +179,7 @@ cumsum_prevented <- sapply(groups, FUN = function(group, quantiles) {
 
  #Weight Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
 cl <- makeCluster(n_cores)
-clusterEvalQ(cl, {library(CausalImpact, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
+clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
 clusterExport(cl, c('sensitivity_ds', 'doCausalImpact',  'weightSensitivityAnalysis', 'rrPredQuantiles', 'sensitivity_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
 
 sensitivity_analysis_full <- setNames(parLapply(cl, sensitivity_groups, weightSensitivityAnalysis, covars = sensitivity_covars_full, ds = sensitivity_ds, impact = sensitivity_impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome,  eval_period = eval_period, post_period = post_period), sensitivity_groups)
