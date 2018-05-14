@@ -5,6 +5,11 @@
 ##Analysis files
 If you want to dig deeper, the functions and analysis code are found in the folder "main analysis components." The analysis code is split into several different files. The code in "synthetic_control_run.R" provides a template for defining initial constants, running analyses, and generating reports. The minimum files needed to run an analysis are the "synthetic_control_analysis.R" and "synthetic_control_functions.R", which contain the analysis code and functions necessary to run the analysis. Make sure these files, along with any additional code files, are in the same directory. See the table below for a short description of each file.
 
+#TROUBLESHOOTING
+1)Make sure date formaton .csv file is correct. It needs to be "YYYY-MM-01". 
+2) Check to make sure working directory is set correctly. It should point to the directory where the .Rmd file is found
+3) make sure output directory, file names are specified correctly on the run.R file
+
 | File Name | File Dependencies | Details |
 | --- | --- | ------------ |
 |  synthetic_control_run.R | synthetic_control_analysis.R, synthetic_control_functions.R, synthetic_control_plot.R, synthetic_control_write_results.R, synthetic_control_report.R, synthetic_control_report.Rmd | A template for running analyses  and generating an html report. User specifies variable names, dates, etc, and the program calls dependent files. |
