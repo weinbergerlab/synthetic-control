@@ -227,7 +227,7 @@ plotPred <- function(pred_quantiles, time_points, post_period, ylim, outcome_plo
     pred_plot <- ggplot() + 
       geom_polygon(data = data.frame(time = c(post_dates, rev(post_dates)), pred_bound = c(pred_quantiles[which(time_points %in% post_dates), 3], rev(pred_quantiles[which(time_points %in% post_dates), 1]))), aes_string(x = 'time', y = 'pred_bound'), alpha = 0.3) +
       geom_line(data = data.frame(time = time_points, outcome = outcome_plot), aes_string(x = 'time', y = 'outcome')) +
-      geom_line(data = data.frame(time = time_points, pred_outcome = pred_quantiles[, 2]), aes_string(x = 'time', y = 'pred_outcome'), linetype = 'dashed', color = 'gray') + 
+      geom_line(data = data.frame(time = time_points, pred_outcome = pred_quantiles[, 2]), aes_string(x = 'time', y = 'pred_outcome'), linetype = 'dashed', color = '#e41a1c') + 
       labs(x = 'Time', y = 'Number of Cases') + 
       ggtitle(title) + 
       theme_bw() +
@@ -240,7 +240,7 @@ plotPred <- function(pred_quantiles, time_points, post_period, ylim, outcome_plo
     pred_plot <- ggplot() + 
       geom_polygon(data = melt(sensitivity_bound, id.vars = NULL), aes_string(x = rep(post_dates, ncol(sensitivity_bound)), y = 'value', fill = 'variable'), alpha = 0.3) +
       geom_line(data = melt(sensitivity_df, id.vars = NULL), aes_string(x = rep(time_points, ncol(sensitivity_df)), y = 'value', color = 'variable')) +
-      scale_colour_manual(values = c('black', 'gray', 'red', 'green', 'blue')) +
+      scale_colour_manual(values = c('black', '#e41a1c', '#4daf4a', '#4daf4a', '#984ea3')) +
       scale_fill_hue(guide = 'none') +
       labs(x = 'Time', y = 'Number of Cases') + 
       ggtitle(sensitivity_title) + 
