@@ -8,8 +8,17 @@ gc()
 
 #Set the working directory
 #This step only works as written if this file is run using the source() command. Otherwise, skip this step and set manually.
-###Should be set as the directory where .Rmd file is saved  ####
-setwd('~/synthetic-control-master/main analysis components')  #directory where .Rmd file is saved
+
+###WORKING DIRECTORY Should be set as the directory where .Rmd file is saved  ####
+#setwd('~/synthetic-control-master/main analysis components')  #directory where .Rmd file is saved
+#Set working directory: default to desktop--different path for windows vs Mac
+if(.Platform$OS.type == "windows") {
+  desktop<-file.path(Sys.getenv("USERPROFILE"),"Desktop")
+  desktop<-gsub(pattern='\\',replacement='/', desktop, fixed=TRUE)
+} else {
+  desktop<- "~/Desktop"
+}
+setwd(file.path(paste0(desktop,'/synthetic-control-master/synthetic-control-master/main analysis components/')))
 
 #Used to check for relevant packages and update them if out of date or install them if not installed.
 update_packages  <- TRUE #Whether to update outdated packages.
