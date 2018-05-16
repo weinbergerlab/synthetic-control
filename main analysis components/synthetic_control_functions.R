@@ -187,11 +187,10 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
 	
      pred_samples_post<-pred_samples[,eval_indices ]
   
-# 	#Pointwise log(Rate Ratio) for use in meta regression
-     obs_full[obs_full==0]<-0.5 #continuity correction for small sampls
-  	log_rr_full_t_samples <- log(obs_full[roll_rr_indices]/pred_samples_post) 
- 	log_rr_full_t_quantiles<-t(apply(log_rr_full_t_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
- 	log_rr_full_t_sd<-t(apply(log_rr_full_t_samples, 2, sd, na.rm = TRUE))
+# obs_full[obs_full==0]<-0.5 #continuity correction for small sampls
+  log_rr_full_t_samples <- log(obs_full/t(pred_samples)) 
+  log_rr_full_t_quantiles<-t(apply(log_rr_full_t_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+  log_rr_full_t_sd<-t(apply(log_rr_full_t_samples, 1, sd, na.rm = TRUE))
 # 	
 # 	#Covariance matrix for pooled analysis
  	log_rr_full_t_samples.covar<-cov(log_rr_full_t_samples)
