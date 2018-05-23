@@ -18,7 +18,7 @@ if(.Platform$OS.type == "windows") {
 } else {
   desktop<- "~/Desktop"
 }
-setwd(file.path(paste0(desktop,'/synthetic-control-master/synthetic-control-master/main analysis components/')))
+setwd(file.path(paste0(desktop,'/synthetic-control-master/main analysis components/')))
 
 #Used to check for relevant packages and update them if out of date or install them if not installed.
 update_packages  <- TRUE #Whether to update outdated packages.
