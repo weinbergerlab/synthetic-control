@@ -30,7 +30,8 @@ N.sim=10000 #total number of random draws for the predictive distribution
 bivariate=FALSE  #two control variables or 1 in regression?
 
 ###############USER SPECIFIED VALUES
-for(country.select in c('Brazil','Chile','Ecuador','Mexico','US')){
+#Note us data on github has sparse counts set to 99999
+for(country.select in c('Brazil','Chile','Ecuador','Mexico')){
 country=country.select
 
 if(country=="Brazil"){
@@ -49,7 +50,7 @@ if(country=="Brazil"){
   date_name<-'date'
   data_start_date <- as.Date('2001-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
   data_intervention_start<-as.Date('2011-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
-  N.buffer=24 #How many months before start evaluation?
+  N.buffer=12 #How many months before start evaluation?
   git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S2%20Chile.csv")      
 }else if(country=="Ecuador"){
   all_cause_name <- 'ach_noj'
@@ -84,7 +85,7 @@ if(country=="Brazil"){
 
 #IMPORT DATA (default is to read Brazil state-level data from github..can change read.csv to a file saved on computer)
 d1 <- read.csv(text=git.data)
-
+print(country)
 #Run the analysis
 source_url("https://raw.githubusercontent.com/weinbergerlab/Brazil_state/master/stl_pca_parallel_analysis")
 
