@@ -5,6 +5,7 @@
 ##Analysis files
 If you want to dig deeper, the functions and analysis code are found in the folder "main analysis components." The analysis code is split into several different files. The code in "synthetic_control_run.R" provides a template for defining initial constants, running analyses, and generating reports. The minimum files needed to run an analysis are the "synthetic_control_analysis.R" and "synthetic_control_functions.R", which contain the analysis code and functions necessary to run the analysis. Make sure these files, along with any additional code files, are in the same directory. See the table below for a short description of each file.
 
+#Can also run stl-pca method of shioda et al https://www.biorxiv.org/content/early/2018/04/27/302224
 #TROUBLESHOOTING
 1)Make sure date formaton .csv file is correct. It needs to be "YYYY-MM-01". 
 2) Check to make sure working directory is set correctly. It should point to the directory where the .Rmd file is found
