@@ -1,0 +1,91 @@
+# Clear workspace to get rid of old junk
+#rm(list=ls(all=TRUE))
+
+#These 2 packages need to be installed and loaded first
+#install.packages('devtools')
+require(devtools)
+#install.packages('abind')
+require(abind)
+
+#read in function file--can read directly from github using devtools function 'source_url'
+source_url("https://raw.githubusercontent.com/weinbergerlab/Brazil_state/master/functions%20glm%20aic%20mod%20ave.R")      
+#source('functions glm aic mod ave.R')
+
+packages <- c('RCurl','reshape2','RColorBrewer','matlib','lme4', 'dummy','rstanarm','knitr','plotly','MASS', 'parallel','splines', 'lubridate','devtools')
+packageHandler(packages, update_packages = FALSE, install_packages = FALSE) #change to true if need to install any
+sapply(packages, library, quietly = TRUE, character.only = TRUE)
+
+
+#Set working directory: default to desktop--different path for windows vs Mac
+if(.Platform$OS.type == "windows") {
+  desktop<-file.path(Sys.getenv("USERPROFILE"),"Desktop")
+} else {
+  desktop<- "~/Desktop"
+}
+
+setwd(desktop)
+
+n_seasons=12 #12 for monthly, 4 for quarterly, 3 for triannually
+N.sim=10000 #total number of random draws for the predictive distribution
+bivariate=FALSE  #two control variables or 1 in regression?
+
+###############USER SPECIFIED VALUES
+for(country.select in c('Brazil','Chile','Ecuador','Mexico','US')){
+country=country.select
+
+if(country=="Brazil"){
+  all_cause_name <- 'ach_noj'
+  strata_name<-"age_group"
+  all_cause_pneu_name <- 'J12_18'
+  date_name<-'date'
+  data_start_date <- as.Date('2004-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
+  data_intervention_start<-as.Date('2010-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
+  N.buffer=24 #How many months before start evaluation?
+  git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S1%20Brazil.csv")      
+}else if(country=="Chile"){
+  all_cause_name <- 'ach_noj'
+  strata_name<-"age_group"
+  all_cause_pneu_name <- 'J12_18'
+  date_name<-'date'
+  data_start_date <- as.Date('2001-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
+  data_intervention_start<-as.Date('2011-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
+  N.buffer=24 #How many months before start evaluation?
+  git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S2%20Chile.csv")      
+}else if(country=="Ecuador"){
+  all_cause_name <- 'ach_noj'
+  strata_name<-"age_group"
+  all_cause_pneu_name <- 'J12_18'
+  date_name<-'date'
+  data_start_date <- as.Date('2001-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
+  data_intervention_start<-as.Date('2010-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
+  N.buffer=24 #How many months before start evaluation?
+  git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S3%20Ecuador.csv")      
+}else if(country=="Mexico"){
+  all_cause_name <- 'ach_noj'
+  strata_name<-"age_group"
+  all_cause_pneu_name <- 'J12_18'
+  date_name<-'date'
+  data_start_date <- as.Date('2000-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
+  data_intervention_start<-as.Date('2006-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
+  N.buffer=24 #How many months before start evaluation?
+  git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S4%20Mexico.csv")      
+}else if(country=="US"){
+  all_cause_name <- 'ach_sid_noresp'
+  strata_name<-"age_group"
+  all_cause_pneu_name <- 'm_ACP'
+  date_name<-'date'
+  data_start_date <- as.Date('1994-01-01')   #When do you want the analysis to start? (yyyy-mm-01)
+  data_intervention_start<-as.Date('2000-01-01')   #When is the intervention introduced?  (yyyy-mm-01)
+  N.buffer=24 #How many months before start evaluation?
+  git.data= getURL("https://raw.githubusercontent.com/weinbergerlab/synthetic-control/master/Datasets%20for%20PNAS/Dataset%20S5%20US%20pneu.csv")      
+}
+
+######################
+
+#IMPORT DATA (default is to read Brazil state-level data from github..can change read.csv to a file saved on computer)
+d1 <- read.csv(text=git.data)
+
+#Run the analysis
+source_url("https://raw.githubusercontent.com/weinbergerlab/Brazil_state/master/stl_pca_parallel_analysis")
+
+}
