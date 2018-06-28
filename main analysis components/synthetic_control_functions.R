@@ -177,6 +177,8 @@ waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
 }
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
+
+#Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period) {
   
     pred_samples <- impact$predict.bsts  
@@ -184,7 +186,7 @@ rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period
   pred <- t(apply(pred_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
   eval_indices <- match(which(time_points==eval_period[1]), (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
   
-  pred_eval_sum <- rowSums(pred_samples[,eval_indices ])
+  pred_eval_sum <- colSums(pred_samples[eval_indices, ])
   
   
     eval_obs <- sum(impact$observed.y[eval_indices] )
