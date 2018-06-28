@@ -14,9 +14,8 @@ install.packages(pkgs=pkgFile, type="source", repos=NULL)
 
 
 library(pogit)
-?negbinBvs
 
-ds<-data_full[[1]]
+ds<-data_full[[9]]
 
 post_period_response <- ds[, 1]
 post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
@@ -45,6 +44,15 @@ llpd<-sum(  llpd.part)
 #PWAIC_1_piece1<-apply(log.piece,2, logmeanexp) #logmeanexp AVOIDS underflow issue
 PWAIC_1<-2*sum(llpd.part - colMeans(log.piece))
 WAIC_1<- -2*(llpd-PWAIC_1)
+temp<-rep(0,times=ncol(log.piece))
+for(j in 1:ncol(log.piece)){
+  temp[j]<-var(log.piece[,j])
+}
+PWAIC_2<-sum(temp)
+WAIC_2<- -2*(llpd-PWAIC_2)
+#save output
+waics<-c(WAIC_1, WAIC_2)
+names(waics)<-c('waic_1','waic_2')
 
 #Generate a prediction interval
 disp<-bsts_model.pois$samplesP$thetaBeta
