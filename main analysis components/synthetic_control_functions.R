@@ -187,7 +187,7 @@ rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period
   pred_eval_sum <- rowSums(pred_samples[,eval_indices ])
   
   
-    eval_obs <- sum(exp((impact$observed.y[eval_indices] )))
+    eval_obs <- sum(impact$observed.y[eval_indices] )
 
   eval_rr_sum <- eval_obs/pred_eval_sum
   rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
