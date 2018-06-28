@@ -46,11 +46,11 @@ splitGroup <- function(ungrouped_data, group_name, group, date_name, start_date,
 	return(ds)
 }
 
-#Log-transform the data.
+#Log-transform the covariate
 logTransform <- function(prelog_data, no_log = NULL) {
-	prelog_data[prelog_data == 0] <- 0.5
-	prelog_data[, !(colnames(prelog_data) %in% no_log)] <- log(prelog_data[, !(colnames(prelog_data) %in% no_log)])
-	return(prelog_data)
+  prelog_data[, !(colnames(prelog_data) %in% no_log)][prelog_data[, !(colnames(prelog_data) %in% no_log)] == 0] <- 0.5
+  prelog_data[, !(colnames(prelog_data) %in% no_log)] <- log(prelog_data[, !(colnames(prelog_data) %in% no_log)])
+  return(prelog_data)
 }
 
 filterSparse <- function(dataset, threshold = 5) {
@@ -90,8 +90,9 @@ makeCovars <- function(ds_group, code_change, intervention_date,season.dummies, 
 }
 
 #Combine the outcome and covariates.
-makeTimeSeries <- function(group, outcome,  covars) {
-	return(cbind(outcome = outcome[, group],  covars[[group]]))
+makeTimeSeries <- function(group, outcome,  covars, trend=FALSE) {
+  if(trend==FALSE){	return(cbind(outcome = outcome[, group],  covars[[group]]))}
+  if(trend==TRUE){	return(cbind(outcome = outcome[, group],log.offset=log(offset[,group]+0.5),  covars[[group]]))}
 }
 
 
@@ -100,53 +101,46 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 	if (is.null(n_seasons) || is.na(n_seasons)) {
 		n_seasons <- length(unique(month(time(zoo_data)))) #number of months
 	}
-	y <- zoo_data[, 1]
-	y[time_points >= as.Date(intervention_date)] <- NA
-	sd_limit <- sd(y)
-	sd <- sd(y, na.rm = TRUE)
-	mean <- mean(y, na.rm = TRUE)
+	y.pre <- zoo_data[time_points < as.Date(intervention_date), 1]
+	y<-zoo_data[,1] #all y
+	
 	
 	post_period_response <- zoo_data[, 1]
 	post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
+	x <-as.matrix(zoo_data[, -1]) #Removes outcome column from dataset
+	x.pre <-as.matrix(zoo_data[time_points < as.Date(intervention_date), -1]) #Removes outcome column from dataset
 	
-	if (trend) {
-	  x <-as.matrix(zoo_data[, -1]) #Removes outcome column from dataset
-	
-	  post_period_response <- zoo_data[, 1]
-	  post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
-	  
-	  regression_prior_df <- 50
-	  exp_r2 <- 0.8
-	  prior1=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities =rep(1,13),prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
-		bsts_model <- lm.spike(y~x, prior=prior1 , niter = n_iter, ping = 0, seed = 1)	
-		
-			} else {
-			  x <-as.matrix(zoo_data[, -1]) #Removes outcome column from dataset
-      
-			  post_period_response <- zoo_data[, 1]
-			  post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
-			  
-			  regression_prior_df <- 50
-			  exp_r2 <- 0.8
+	post_period_response <- zoo_data[, 1]
+	post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
+	regression_prior_df <- 50
+	#instead try pogit packages?
+	exp_r2 <- 0.8
+   	if (trend) {
+        #set inclusion prob=1 for all variab;es
+    	  prior1=SpikeSlabPrior(cbind(1,x.pre), y=y.pre, prior.inclusion.probabilities =rep(1,14),prior.df = regression_prior_df, expected.r2 = exp_r2 )
+    		bsts_model <- poisson.spike(y.pre~x.pre, prior=prior1 , niter = n_iter, ping = 0, seed = 1)	
+    		covars<-x
+		 }else {
+
 			  denom <- ncol(x)-(n_seasons-1)
-			  
 			  if(denom>0){
 			  	prior.inclusion.probabilities = c( rep(1,n_seasons),  rep(n_pred/denom,denom) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
-			  } else {	prior.inclusion.probabilities = rep(1,12)   }
-			  prior.inclusion.probabilities[prior.inclusion.probabilities>1] <- 1
-			  prior2=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
-			  bsts_model <- lm.spike(y ~ x,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
-			  
-			}
-	predict.bsts<-predict(bsts_model, newdata=cbind(1,x), burn=n_iter*0.1, mean.only=FALSE)
+			  } else {	
+			    prior.inclusion.probabilities = rep(1,12)   
+			  }
+  			  prior.inclusion.probabilities[prior.inclusion.probabilities>1] <- 1
+  			  prior2=SpikeSlabPrior(cbind(1,x.pre),y=y.pre, prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2 )
+  			  bsts_model <- poisson.spike(y.pre ~ x.pre,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
+  			  covars<-x
+		  	}
+	predict.bsts<-predict(bsts_model, newdata=cbind(rep(1, times=nrow(x)),x), burn=n_iter*0.1, mean.only=FALSE)
 	beta.mat<-bsts_model$beta[-seq(from=1, to=n_iter*0.1, by=1),]
-	covars<-x
-	sigma.est<-bsts_model$sigma[-seq(from=1, to=n_iter*0.1, by=1)]
+
 	coef.bsts<-SummarizeSpikeSlabCoefficients(bsts_model$beta, burn=n_iter*0.1, order=FALSE)
 	inclusion_probs<- coef.bsts[,5]
 	names(inclusion_probs)<-substring(names(inclusion_probs),2)
-	impact <- list(sigma.est,covars,beta.mat,predict.bsts,inclusion_probs, post.period.response = post_period_response, observed.y=zoo_data[, 1])
-	names(impact)<-c('sigma.est','covars','beta.mat','predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
+	impact <- list(covars,beta.mat,predict.bsts,inclusion_probs, post.period.response = post_period_response, observed.y=zoo_data[, 1])
+	names(impact)<-c('covars','beta.mat','predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
 	return(impact)
 }
 
@@ -155,28 +149,28 @@ inclusionProb <- function(impact) {
 	return(impact$inclusion_probs)
 }
 
-##calculate the WAIC
 waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
   covars.pre<-impact$covars[time_points < as.Date(intervention_date),]
   covars.pre<-cbind(rep(1,nrow(covars.pre)), covars.pre)
   y.pre<-impact$observed.y[time_points < as.Date(intervention_date)]
-  reg.mean<-   t(covars.pre %*% t(impact$beta.mat))
-  piece<-matrix(NA, nrow=nrow(reg.mean), ncol=ncol(reg.mean))
+  reg.mean<-   exp(t(covars.pre %*% t(impact$beta.mat)))
+  log.piece<-matrix(NA, nrow=nrow(reg.mean), ncol=ncol(reg.mean))
   for(j in 1:nrow(reg.mean)){
-  piece[j,]<-dnorm(y.pre, mean=reg.mean[j,], sd=impact$sigma.est[j], log=FALSE)
+    log.piece[j,]<-dpois(y.pre, lambda=reg.mean[j,], log=TRUE)
   }
-  llpd<-sum(log(colMeans(piece)))
-  PWAIC_1<-2*sum(log(colMeans(piece)) - colMeans(log(piece)))
+  llpd.part<-apply(log.piece,2, logmeanexp) #logmeanexp AVOIDS underflow issue
+  llpd<-sum(  llpd.part)
+  #PWAIC_1_piece1<-apply(log.piece,2, logmeanexp) #logmeanexp AVOIDS underflow issue
+  PWAIC_1<-2*sum(llpd.part - colMeans(log.piece))
   WAIC_1<- -2*(llpd-PWAIC_1)
-  WAIC_1
-  
-  temp<-rep(0,times=ncol(piece))
-  for(j in 1:ncol(piece)){
-    temp[j]<-var(log(piece[,j]))
+
+  temp<-rep(0,times=ncol(log.piece))
+  for(j in 1:ncol(log.piece)){
+    temp[j]<-var(log.piece[,j])
   }
   PWAIC_2<-sum(temp)
   WAIC_2<- -2*(llpd-PWAIC_2)
-  WAIC_2
+  #save output
   waics<-c(WAIC_1, WAIC_2)
   names(waics)<-c('waic_1','waic_2')
   return(waics)
@@ -184,23 +178,17 @@ waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, post_period, trend = FALSE) {
-  if (trend) {
-    pred_samples <- exp(denom_data) * t(exp(impact$predict.bsts  * sd + mean))
-  } else {
-    pred_samples <- t(exp(impact$predict.bsts  * sd + mean))	
-  }
+  
+    pred_samples <- impact$predict.bsts  
   
   pred <- t(apply(pred_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
   eval_indices <- match(which(time_points==eval_period[1]), (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
   
   pred_eval_sum <- rowSums(pred_samples[,eval_indices ])
   
-  if (trend) {
-    eval_obs <- sum((exp(denom_data) * exp(impact$observed.y * sd + mean))[eval_indices])
-  } else {
-    eval_obs <- sum(exp((impact$observed.y[eval_indices] * sd + mean)))	
-  }
   
+    eval_obs <- sum(exp((impact$observed.y[eval_indices] )))
+
   eval_rr_sum <- eval_obs/pred_eval_sum
   rr <- quantile(eval_rr_sum, probs = c(0.025, 0.5, 0.975))
   names(rr) <- c('Lower CI', 'Point Estimate', 'Upper CI')
@@ -208,11 +196,9 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
   
   plot_rr_start <- which(time_points==post_period[1]) - n_seasons
   roll_rr_indices <- match(plot_rr_start, (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
-  if (trend) {
-    obs_full <- exp(denom_data) * exp(impact$observed.y * sd + mean)
-  } else {
-    obs_full <- exp(impact$observed.y * sd + mean)
-  }
+ 
+    obs_full <- impact$observed.y 
+  
   roll_sum_pred <- roll_sum(t(pred_samples[,roll_rr_indices ]), n_seasons)
   roll_sum_obs <- roll_sum(obs_full[roll_rr_indices], n_seasons)
   roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
