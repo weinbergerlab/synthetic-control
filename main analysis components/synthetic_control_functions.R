@@ -177,7 +177,7 @@ waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
 }
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
-rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, post_period, trend = FALSE) {
+rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period) {
   
     pred_samples <- impact$predict.bsts  
   
@@ -207,17 +207,20 @@ rrPredQuantiles <- function(impact, denom_data = NULL, mean, sd, eval_period, po
      pred_samples_post<-pred_samples[,eval_indices ]
   
 # obs_full[obs_full==0]<-0.5 #continuity correction for small sampls
-  log_rr_full_t_samples <- log(obs_full/t(pred_samples)) 
-  log_rr_full_t_quantiles<-t(apply(log_rr_full_t_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
-  log_rr_full_t_sd<-t(apply(log_rr_full_t_samples, 1, sd, na.rm = TRUE))
+   #  pred_quantiles<-t(apply(pred_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+   #  matplot(impact$observed.y/pred_quantiles, type='l')
+  log_rr_full_t_samples <- t(log(obs_full/pred_samples) )
+  log_rr_full_t_quantiles<-t(apply(log_rr_full_t_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+  log_rr_full_t_sd<-t(apply(log_rr_full_t_samples, 2, sd, na.rm = TRUE))
 # 	
 # 	#Covariance matrix for pooled analysis
- 	log_rr_full_t_samples.covar<-cov(t(log_rr_full_t_samples))
- 	log_rr_full_t_samples.prec<-solve(log_rr_full_t_samples.covar)
+ 	log_rr_full_t_samples.covar<-cov(log_rr_full_t_samples)
+ 	#post.indices<- which(time_points==post_period[1]):which(time_points==post_period[2])
+ 	#log_rr_full_t_samples.prec.post<-solve(log_rr_full_t_samples.covar[post.indices,post.indices]) #NOT INVERTIBLE?
 # 	
   # quantiles <- list(pred_samples_post_full = pred_samples_post,roll_rr=roll_rr, log_rr_full_t_samples.prec=log_rr_full_t_samples.prec, log_rr_full_t_samples=log_rr_full_t_samples,log_rr_full_t_quantiles=log_rr_full_t_quantiles,log_rr_full_t_sd=log_rr_full_t_sd, plot_pred = plot_pred,log_plot_pred=log_plot_pred, log_plot_pred_SD=log_plot_pred_SD, rr = rr, mean_rate_ratio = mean_rate_ratio,rr.iter=rr.iter)
  # quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr)
-   quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr, pred_samples_post_full = pred_samples_post,roll_rr=roll_rr, log_rr_full_t_samples.prec=log_rr_full_t_samples.prec, log_rr_full_t_samples=log_rr_full_t_samples,log_rr_full_t_quantiles=log_rr_full_t_quantiles,log_rr_full_t_sd=log_rr_full_t_sd, rr = rr)
+   quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr, pred_samples_post_full = pred_samples_post,roll_rr=roll_rr, log_rr_full_t_quantiles=log_rr_full_t_quantiles,log_rr_full_t_sd=log_rr_full_t_sd, rr = rr)
    return(quantiles)
 }
 
