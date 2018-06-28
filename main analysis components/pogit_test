@@ -1,0 +1,36 @@
+
+url_BayesLogit<- "https://cran.r-project.org/src/contrib/Archive/BayesLogit/BayesLogit_0.6.tar.gz"
+pkgFile_BayesLogit <- "BayesLogit_0.6.tar.gz"
+download.file(url = url_BayesLogit, destfile = pkgFile_BayesLogit)
+install.packages(pkgs=pkgFile_BayesLogit, type="source", repos=NULL)
+
+install.packages('logistf')
+
+
+url_pogit <- "https://cran.r-project.org/src/contrib/Archive/pogit/pogit_1.1.0.tar.gz"
+pkgFile_pogit <- "pogit_1.1.0.tar.gz"
+download.file(url = url_pogit, destfile = pkgFile_pogit)
+install.packages(pkgs=pkgFile, type="source", repos=NULL)
+
+
+library(pogit)
+?negbinBvs
+
+ds<-data_full[[1]]
+
+post_period_response <- ds[, 1]
+post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
+x <-as.matrix(ds[, -1]) #Removes outcome column from dataset
+x.pre <-as.matrix(ds[time_points < as.Date(intervention_date), -1]) #Removes outcome column from dataset
+x.pre<-cbind(rep(1,times=nrow(x.pre)), x.pre)
+y.pre <- ds[time_points < as.Date(intervention_date), 1]
+
+deltafix.mod<-rep(0, times=(ncol(x.pre)-1))
+deltafix.mod[1:11]<-1 #fix  monthly dummies
+bsts_model <- negbinBvs(y=y.pre , offset=NULL, X=x.pre, model=list(deltafix=deltafix.mod)  )
+cID <- seq_along(y.pre)
+#Observation-level random effect
+bsts_model.pois  <- poissonBvs(y=y.pre , X=x.pre, model = list(deltafix=deltafix.mod,ri = TRUE, clusterID = cID))
+
+
+
