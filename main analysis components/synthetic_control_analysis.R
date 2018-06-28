@@ -80,6 +80,7 @@ covars_time <- setNames(lapply(covars_full, FUN = function(covars) {as.data.fram
 
 #Standardize the outcome variable and save the original mean and SD for later analysis.
 outcome      <- sapply(ds, FUN = function(data) {data[, outcome_name]})
+outcome_plot=outcome
 offset<- sapply(ds, FUN=function(data) exp(data[, denom_name]) )  #offset term on original scale; 1 column per age group
 
 
@@ -113,10 +114,8 @@ inclusion_prob_full <- setNames(lapply(impact_full, inclusionProb), groups)
 inclusion_prob_time <- setNames(lapply(impact_time, inclusionProb), groups)
 
 #All model results combined
-quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_mean[group],        sd = outcome_sd[group],        eval_period = eval_period, post_period = post_period)}), groups)
-quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
-
-
+quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name],        eval_period = eval_period, post_period = post_period)}), groups)
+quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name],  eval_period = eval_period, post_period = post_period)}), groups)
 
 
 #Model predicitons
@@ -127,10 +126,10 @@ pred_quantiles_time <- sapply(quantiles_time, getPred, simplify = 'array')
 log_rr_quantiles   <- sapply(quantiles_full,   FUN = function(quantiles) {quantiles$log_rr_full_t_quantiles}, simplify = 'array')
 dimnames(log_rr_quantiles)[[1]] <- time_points
 log_rr_sd   <- sapply(quantiles_full,   FUN = function(quantiles) {quantiles$log_rr_full_t_sd}, simplify = 'array')
-log_rr_full_t_samples.prec<-sapply(quantiles_full,   FUN = function(quantiles) {quantiles$log_rr_full_t_samples.prec}, simplify = 'array')
+#log_rr_full_t_samples.prec<-sapply(quantiles_full,   FUN = function(quantiles) {quantiles$log_rr_full_t_samples.prec}, simplify = 'array')
 saveRDS(log_rr_quantiles, file=paste0(output_directory, country, "_log_rr_quantiles.rds"))
 saveRDS(log_rr_sd, file=paste0(output_directory, country, "_log_rr_sd.rds"))
-saveRDS(log_rr_full_t_samples.prec, file=paste0(output_directory, country, "_log_rr_full_t_samples.prec.rds"))
+#saveRDS(log_rr_full_t_samples.prec, file=paste0(output_directory, country, "_log_rr_full_t_samples.prec.rds"))
 
 
 #Rolling rate ratios
@@ -146,12 +145,13 @@ rr_mean_time_intervals <- data.frame('ITS Estimate (95% CI)' = makeInterval(rr_m
 
 colnames(rr_mean_time) <- paste('ITS', colnames(rr_mean_time))
 
+
 cumsum_prevented <- sapply(groups, FUN = function(group, quantiles) {
 	is_post_period <- which(time_points >= post_period[1])
 	is_pre_period <- which(time_points < post_period[1])
 	
 	#Cumulative sum of prevented cases
-	cases_prevented <- t(quantiles[[group]]$pred_samples) - outcome_plot[, group]
+	cases_prevented <- t(quantiles[[group]]$pred_samples) - outcome[, group]
 	cumsum_cases_prevented_post <- apply(cases_prevented[is_post_period, ], 2, cumsum)
 	cumsum_cases_prevented_pre <- matrix(0, nrow = nrow(cases_prevented[is_pre_period, ]), ncol = ncol(cases_prevented[is_pre_period, ]))
 	cumsum_cases_prevented <- rbind(cumsum_cases_prevented_pre, cumsum_cases_prevented_post)
@@ -186,7 +186,7 @@ cumsum_prevented <- sapply(groups, FUN = function(group, quantiles) {
  #Weight Sensitivity Analysis - top weighted variables are excluded and analysis is re-run.
 cl <- makeCluster(n_cores)
 clusterEvalQ(cl, {library(BoomSpikeSlab, quietly = TRUE); library(lubridate, quietly = TRUE); library(RcppRoll, quietly = TRUE)})
-clusterExport(cl, c('sensitivity_ds', 'doCausalImpact',  'weightSensitivityAnalysis', 'rrPredQuantiles', 'sensitivity_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons', 'outcome_mean', 'outcome_sd', 'eval_period', 'post_period'), environment())
+clusterExport(cl, c('sensitivity_ds', 'doCausalImpact',  'weightSensitivityAnalysis', 'rrPredQuantiles', 'sensitivity_groups', 'intervention_date', 'outcome', 'time_points', 'n_seasons',  'eval_period', 'post_period'), environment())
 
 sensitivity_analysis_full <- setNames(parLapply(cl, sensitivity_groups, weightSensitivityAnalysis, covars = sensitivity_covars_full, ds = sensitivity_ds, impact = sensitivity_impact_full, time_points = time_points, intervention_date = intervention_date, n_seasons = n_seasons, outcome = outcome,  eval_period = eval_period, post_period = post_period), sensitivity_groups)
 
