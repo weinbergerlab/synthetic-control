@@ -179,11 +179,13 @@ waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
+
+#Estimate the rate ratios during the evaluation period and return to the original scale of the data.
 rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period) {
   
     pred_samples <- impact$predict.bsts  
   
-  pred <- t(apply(pred_samples, 2, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
+  pred <- t(apply(pred_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
   eval_indices <- match(which(time_points==eval_period[1]), (1:length(impact$observed.y))):match(which(time_points==eval_period[2]), (1:length(impact$observed.y)))
   
   pred_eval_sum <- colSums(pred_samples[eval_indices, ])
@@ -201,12 +203,12 @@ rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period
  
     obs_full <- impact$observed.y 
   
-  roll_sum_pred <- roll_sum(t(pred_samples[,roll_rr_indices ]), n_seasons)
+  roll_sum_pred <- roll_sum(pred_samples[roll_rr_indices, ], n_seasons)
   roll_sum_obs <- roll_sum(obs_full[roll_rr_indices], n_seasons)
-  roll_rr_est <- as.data.frame(sweep(1 / roll_sum_pred, 1, as.vector(roll_sum_obs), `*`))
+  roll_rr_est <- roll_sum_obs/ roll_sum_pred
   roll_rr <- t(apply(roll_rr_est, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
 	
-     pred_samples_post<-pred_samples[,eval_indices ]
+     pred_samples_post<-pred_samples[eval_indices, ]
   
 # obs_full[obs_full==0]<-0.5 #continuity correction for small sampls
    #  pred_quantiles<-t(apply(pred_samples, 1, quantile, probs = c(0.025, 0.5, 0.975), na.rm = TRUE))
@@ -225,7 +227,6 @@ rrPredQuantiles <- function(impact, denom_data = NULL,  eval_period, post_period
    quantiles <- list(pred_samples = pred_samples, pred = pred, rr = rr, roll_rr = roll_rr, mean_rr = mean_rr, pred_samples_post_full = pred_samples_post,roll_rr=roll_rr, log_rr_full_t_quantiles=log_rr_full_t_quantiles,log_rr_full_t_sd=log_rr_full_t_sd, rr = rr)
    return(quantiles)
 }
-
 
 getPred <- function(quantiles) {
   return(quantiles$pred)
