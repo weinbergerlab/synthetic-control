@@ -60,3 +60,4 @@ eval_period       <- as.Date(c('2012-01-01', '2013-12-01')) #Range over which ra
 
 #Run analysis and generate HTML report
 source('synthetic_control_report.R', local = TRUE)
+source('synthetic_control_write_results.R', local = TRUE) #save .csv files with output tables
