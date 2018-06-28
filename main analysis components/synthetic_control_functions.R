@@ -163,7 +163,7 @@ waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
   reg.mean<-   t(covars.pre %*% t(impact$beta.mat))
   piece<-matrix(NA, nrow=nrow(reg.mean), ncol=ncol(reg.mean))
   for(j in 1:nrow(reg.mean)){
-  piece[j,]<-pnorm(y.pre, mean=reg.mean[j,], sd=impact$sigma.est[j], log=FALSE)
+  piece[j,]<-dnorm(y.pre, mean=reg.mean[j,], sd=impact$sigma.est[j], log=FALSE)
   }
   llpd<-sum(log(colMeans(piece)))
   PWAIC_1<-2*sum(log(colMeans(piece)) - colMeans(log(piece)))
