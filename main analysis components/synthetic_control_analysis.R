@@ -9,9 +9,9 @@
 #                           #
 #############################
 
-source('synthetic_control_functions.R', local = TRUE)
+source('synthetic_control_functions POISSON.R', local = TRUE)
 
-packages <- c('parallel', 'splines', 'lubridate', 'RcppRoll', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
+packages <- c('parallel', 'splines', 'lubridate', 'RcppRoll','pomp', 'BoomSpikeSlab', 'ggplot2', 'reshape','dummies')
 packageHandler(packages, update_packages, install_packages)
 sapply(packages, library, quietly = TRUE, character.only = TRUE)
 
@@ -37,13 +37,15 @@ if (exists('exclude_group')) {groups <- groups[!(groups %in% exclude_group)]}
 #                                             #
 ###############################################
 
+
 prelog_data[, date_name] <- formatDate(prelog_data[, date_name])
 prelog_data <- setNames(lapply(groups, FUN = splitGroup, ungrouped_data = prelog_data, group_name = group_name, date_name = date_name, start_date = start_date, end_date = end_date, no_filter = c(group_name, date_name, outcome_name, denom_name)), groups)
 #if (exists('exclude_group')) {prelog_data <- prelog_data[!(names(prelog_data) %in% exclude_group)]}
 
 #Log-transform all variables, adding 0.5 to counts of 0.
-ds <- setNames(lapply(prelog_data, FUN = logTransform, no_log = c(group_name, date_name)), groups)
+ds <- setNames(lapply(prelog_data, FUN = logTransform, no_log = c(group_name, date_name,outcome_name)), groups)
 time_points <- unique(ds[[1]][, date_name])
+
 
 #Monthly dummies
 if(n_seasons==4){x<-quarter(as.Date(time_points))}
@@ -77,18 +79,13 @@ covars_full <- sapply(covars_full, FUN = function(covars) {covars[, !(colnames(c
 covars_time <- setNames(lapply(covars_full, FUN = function(covars) {as.data.frame(list(cbind(season.dummies,time_index = 1:nrow(covars))))}), groups)
 
 #Standardize the outcome variable and save the original mean and SD for later analysis.
-outcome      <- sapply(ds, FUN = function(data) {scale(data[, outcome_name])})
-outcome_mean <- sapply(ds, FUN = function(data) {mean(data[, outcome_name])})
-outcome_sd   <- sapply(ds, FUN = function(data) {sd(data[, outcome_name])})
-outcome_plot <- exp(t(t(outcome) * outcome_sd + outcome_mean))
-outcome_offset      <- sapply(ds, FUN = function(data) {data[, outcome_name] - data[, denom_name]})
-outcome_offset_mean <- colMeans(outcome_offset)
-outcome_offset_sd   <- sapply(ds, FUN = function(data) {sd(data[, outcome_name] - data[, denom_name])})
-outcome_offset      <- scale(outcome_offset)
+outcome      <- sapply(ds, FUN = function(data) {data[, outcome_name]})
+offset<- sapply(ds, FUN=function(data) exp(data[, denom_name]) )  #offset term on original scale; 1 column per age group
+
 
 #Combine the outcome, covariates, and time point information.
-data_full <- setNames(lapply(groups, makeTimeSeries, outcome = outcome,       covars = covars_full), groups)
-data_time <- setNames(lapply(groups, makeTimeSeries, outcome = outcome_offset, covars = covars_time), groups)
+data_full <- setNames(lapply(groups, makeTimeSeries, outcome = outcome,       covars = covars_full, trend=FALSE), groups)
+data_time <- setNames(lapply(groups, makeTimeSeries, outcome = outcome, covars = covars_time, trend=TRUE), groups)
 
 ###############################
 #                             #
@@ -110,13 +107,17 @@ stopCluster(cl)
 waic_full<-t(sapply(impact_full,waic_fun))
 waic_time<-t(sapply(impact_time,waic_fun))
 
+
 #Save the inclusion probabilities from each of the models.
 inclusion_prob_full <- setNames(lapply(impact_full, inclusionProb), groups)
 inclusion_prob_time <- setNames(lapply(impact_time, inclusionProb), groups)
 
 #All model results combined
-quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_mean[group],        sd = outcome_sd[group],        eval_period = eval_period, post_period = post_period)}), groups)
-quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name], mean = outcome_offset_mean[group], sd = outcome_offset_sd[group], eval_period = eval_period, post_period = post_period, trend = TRUE)}), groups)
+quantiles_full <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_full[[group]], denom_data = ds[[group]][, denom_name],        eval_period = eval_period, post_period = post_period)}), groups)
+quantiles_time <- setNames(lapply(groups, FUN = function(group) {rrPredQuantiles(impact = impact_time[[group]], denom_data = ds[[group]][, denom_name],  eval_period = eval_period, post_period = post_period)}), groups)
+
+
+
 
 #Model predicitons
 pred_quantiles_full <- sapply(quantiles_full, getPred, simplify = 'array')
