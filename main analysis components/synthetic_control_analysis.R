@@ -106,6 +106,10 @@ impact_time <- setNames(parLapply(cl, data_time, doCausalImpact, intervention_da
 
 stopCluster(cl)
 
+#calculate WAIC
+waic_full<-t(sapply(impact_full,waic_fun))
+waic_time<-t(sapply(impact_time,waic_fun))
+
 #Save the inclusion probabilities from each of the models.
 inclusion_prob_full <- setNames(lapply(impact_full, inclusionProb), groups)
 inclusion_prob_time <- setNames(lapply(impact_time, inclusionProb), groups)
