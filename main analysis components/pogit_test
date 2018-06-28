@@ -24,13 +24,43 @@ x <-as.matrix(ds[, -1]) #Removes outcome column from dataset
 x.pre <-as.matrix(ds[time_points < as.Date(intervention_date), -1]) #Removes outcome column from dataset
 x.pre<-cbind(rep(1,times=nrow(x.pre)), x.pre)
 y.pre <- ds[time_points < as.Date(intervention_date), 1]
+y<-ds[, 1]
 
 deltafix.mod<-rep(0, times=(ncol(x.pre)-1))
 deltafix.mod[1:11]<-1 #fix  monthly dummies
-bsts_model <- negbinBvs(y=y.pre , offset=NULL, X=x.pre, model=list(deltafix=deltafix.mod)  )
 cID <- seq_along(y.pre)
 #Observation-level random effect
 bsts_model.pois  <- poissonBvs(y=y.pre , X=x.pre, model = list(deltafix=deltafix.mod,ri = TRUE, clusterID = cID))
+betas<- bsts_model.pois$samplesP$beta
 
+#Calculate WAIC
+re<- bsts_model.pois$samplesP$bi  #Obbservation-level random effect estimate
+reg.mean<-   t(exp(x.pre %*% t(betas) + t(re)))
+log.piece<-matrix(NA, nrow=nrow(reg.mean), ncol=ncol(reg.mean))
+for(j in 1:nrow(reg.mean)){
+  log.piece[j,]<-dpois(y.pre, lambda=reg.mean[j,], log=TRUE)
+}
+llpd.part<-apply(log.piece,2, logmeanexp) #logmeanexp AVOIDS underflow issue
+llpd<-sum(  llpd.part)
+#PWAIC_1_piece1<-apply(log.piece,2, logmeanexp) #logmeanexp AVOIDS underflow issue
+PWAIC_1<-2*sum(llpd.part - colMeans(log.piece))
+WAIC_1<- -2*(llpd-PWAIC_1)
 
+#Generate a prediction interval
+disp<-bsts_model.pois$samplesP$thetaBeta
+disp.mat<-rnorm(n=length(disp)*length(y), mean=0, sd=abs(disp))
+disp.mat<-t(matrix(disp.mat, nrow=length(disp), ncol=length(y)))
+x.fit<-cbind(rep(1,nrow(x)),x)
+reg.mean<-   exp(  (x.fit %*% t(betas)) + disp.mat )
+reg.mean.pred<-rpois(length(reg.mean),lambda=reg.mean)
+reg.mean.pred<-matrix(reg.mean.pred,nrow=nrow(reg.mean), ncol=ncol(reg.mean))
+reg.mean.pred.q<-t(apply(reg.mean.pred,1,quantile, probs=c(0.025,0.5,0.975)))
+matplot(reg.mean.pred.q, type='l', col=c('gray','black','gray'), lty=c(2,1,2), bty='l', ylab="N hospitalizations")
+points(y)
 
+#Inclusion probabilities Poisson model
+incl.probs.mat<-t(bsts_model.pois$samplesP$pdeltaBeta)
+incl.probs<-apply(incl.probs.mat,1,mean)
+summary.pois<- summary(bsts_model.pois)
+covar.names<-dimnames(x.pre)[[2]][-1]
+incl.probs<-cbind.data.frame(covar.names,incl.probs)
