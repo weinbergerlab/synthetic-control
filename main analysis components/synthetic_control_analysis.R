@@ -84,8 +84,8 @@ offset<- sapply(ds, FUN=function(data) exp(data[, denom_name]) )  #offset term o
 
 
 #Combine the outcome, covariates, and time point information.
-data_full <- setNames(lapply(groups, makeTimeSeries, outcome = outcome,       covars = covars_full, trend=FALSE), groups)
-data_time <- setNames(lapply(groups, makeTimeSeries, outcome = outcome, covars = covars_time, trend=TRUE), groups)
+data_full <- setNames(lapply(groups, makeTimeSeries, outcome = outcome,       covars = covars_full), groups)
+data_time <- setNames(lapply(groups, makeTimeSeries, outcome = outcome, covars = covars_time), groups)
 
 ###############################
 #                             #
