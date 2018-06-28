@@ -1,0 +1,15 @@
+url_BayesLogit<- "https://cran.r-project.org/src/contrib/Archive/BayesLogit/BayesLogit_0.6.tar.gz"
+pkgFile_BayesLogit <- "BayesLogit_0.6.tar.gz"
+download.file(url = url_BayesLogit, destfile = pkgFile_BayesLogit)
+install.packages(pkgs=pkgFile_BayesLogit, type="source", repos=NULL)
+
+install.packages('logistf')
+
+
+url_pogit <- "https://cran.r-project.org/src/contrib/Archive/pogit/pogit_1.1.0.tar.gz"
+pkgFile_pogit <- "pogit_1.1.0.tar.gz"
+download.file(url = url_pogit, destfile = pkgFile_pogit)
+install.packages(pkgs=pkgFile, type="source", repos=NULL)
+
+
+library(pogit)
