@@ -122,7 +122,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 		
 			} else {
 			  x <-as.matrix(zoo_data[, -1]) #Removes outcome column from dataset
-
+      
 			  post_period_response <- zoo_data[, 1]
 			  post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
 			  
@@ -134,24 +134,52 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 			  	prior.inclusion.probabilities = c( rep(1,n_seasons),  rep(n_pred/denom,denom) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
 			  } else {	prior.inclusion.probabilities = rep(1,12)   }
 			  prior.inclusion.probabilities[prior.inclusion.probabilities>1] <- 1
-
 			  prior2=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
 			  bsts_model <- lm.spike(y ~ x,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
 			  
 			}
-	
 	predict.bsts<-predict(bsts_model, newdata=cbind(1,x), burn=n_iter*0.1, mean.only=FALSE)
+	beta.mat<-bsts_model$beta[-seq(from=1, to=n_iter*0.1, by=1),]
+	covars<-x
+	sigma.est<-bsts_model$sigma[-seq(from=1, to=n_iter*0.1, by=1)]
 	coef.bsts<-SummarizeSpikeSlabCoefficients(bsts_model$beta, burn=n_iter*0.1, order=FALSE)
 	inclusion_probs<- coef.bsts[,5]
 	names(inclusion_probs)<-substring(names(inclusion_probs),2)
-	impact <- list(predict.bsts,inclusion_probs, post.period.response = post_period_response, observed.y=zoo_data[, 1])
-	names(impact)<-c('predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
+	impact <- list(sigma.est,covars,beta.mat,predict.bsts,inclusion_probs, post.period.response = post_period_response, observed.y=zoo_data[, 1])
+	names(impact)<-c('sigma.est','covars','beta.mat','predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
 	return(impact)
 }
 
 #Save inclusion probabilities.
 inclusionProb <- function(impact) {
 	return(impact$inclusion_probs)
+}
+
+##calculate the WAIC
+waic_fun<-function(impact,  eval_period, post_period, trend = FALSE) {
+  covars.pre<-impact$covars[time_points < as.Date(intervention_date),]
+  covars.pre<-cbind(rep(1,nrow(covars.pre)), covars.pre)
+  y.pre<-impact$observed.y[time_points < as.Date(intervention_date)]
+  reg.mean<-   t(covars.pre %*% t(impact$beta.mat))
+  piece<-matrix(NA, nrow=nrow(reg.mean), ncol=ncol(reg.mean))
+  for(j in 1:nrow(reg.mean)){
+  piece[j,]<-pnorm(y.pre, mean=reg.mean[j,], sd=impact$sigma.est[j], log=FALSE)
+  }
+  llpd<-sum(log(colMeans(piece)))
+  PWAIC_1<-2*sum(log(colMeans(piece)) - colMeans(log(piece)))
+  WAIC_1<- -2*(llpd-PWAIC_1)
+  WAIC_1
+  
+  temp<-rep(0,times=ncol(piece))
+  for(j in 1:ncol(piece)){
+    temp[j]<-var(log(piece[,j]))
+  }
+  PWAIC_2<-sum(temp)
+  WAIC_2<- -2*(llpd-PWAIC_2)
+  WAIC_2
+  waics<-c(WAIC_1, WAIC_2)
+  names(waics)<-c('waic_1','waic_2')
+  return(waics)
 }
 
 #Estimate the rate ratios during the evaluation period and return to the original scale of the data.
