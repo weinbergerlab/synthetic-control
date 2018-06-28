@@ -11,8 +11,8 @@ write.csv(rr_roll_full, paste(output_directory, country, '_rr_roll_full.csv', se
 write.csv(rr_roll_time, paste(output_directory, country, '_rr_roll_time.csv', sep = ''))
 
 #WAICs
-write.csv(waic_full, paste(output_directory, country, '_waic_full.csv', sep = ''))
-write.csv(waic_time, paste(output_directory, country, '_waic_time.csv', sep = ''))
+#write.csv(waic_full, paste(output_directory, country, '_waic_full.csv', sep = ''))
+#write.csv(waic_time, paste(output_directory, country, '_waic_time.csv', sep = ''))
 
 #Output the sensitivity analysis rate ratio estimates to a new file.
 # write.csv(sensitivity_analysis_pred_2,  paste(output_directory, country, '_sensitivity_analysis_pred_2.csv',  sep = ''))
