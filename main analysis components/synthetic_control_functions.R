@@ -272,7 +272,7 @@ plotPred <- function(pred_quantiles, time_points, post_period, ylim, outcome_plo
 }
 
 #Sensitivity analysis by dropping the top weighted covariates. 
-weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, intervention_date, n_seasons, outcome, mean = NULL, sd = NULL,n_iter = 10000, eval_period = NULL, post_period = NULL) {
+weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, intervention_date, n_seasons, outcome,n_iter = 10000, eval_period = NULL, post_period = NULL) {
   par(mar = c(5, 4, 1, 2) + 0.1)
   covar_df <- as.matrix(covars[[group]])
   #colnames(covar_df)<-substring(colnames(covar_df), 2)
@@ -287,16 +287,24 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
   
     #Combine covars, outcome, date
     y <- outcome[, group]
-    y[time_points >= as.Date(intervention_date)] <- NA
+    y.pre<-outcome[time_points < as.Date(intervention_date), group]
+    covar_df.pre<-covar_df[time_points < as.Date(intervention_date),]
     post_period_response <- outcome[, group]
     post_period_response <- as.vector(post_period_response[time_points >= as.Date(intervention_date)])
     
     regression_prior_df <- 50
     exp_r2 <- 0.8
     n_pred<-3
-    prior2=SpikeSlabPrior(as.matrix(cbind(1,covar_df)), expected.model.size = n_pred,prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
-    bsts_model <- lm.spike(y ~ covar_df,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
-    
+    denom <- ncol(covar_df.pre)-(n_seasons-1)
+    if(denom>0){
+      prior.inclusion.probabilities = c( rep(1,n_seasons),  rep(n_pred/denom,denom) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
+    } else {	
+      prior.inclusion.probabilities = rep(1,12)   
+    }
+    prior.inclusion.probabilities[prior.inclusion.probabilities>1] <- 1
+    prior2=SpikeSlabPrior(cbind(1,covar_df.pre),y=y.pre, prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2 )
+    bsts_model <- poisson.spike(y.pre ~ covar_df.pre,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
+   
     predict.bsts<-predict(bsts_model, newdata=cbind(1,covar_df), burn=n_iter*0.1, mean.only=FALSE)
     coef.bsts<-SummarizeSpikeSlabCoefficients(bsts_model$beta, burn=n_iter*0.1, order=FALSE)
     inclusion_probs<-coef.bsts[,5]
@@ -306,7 +314,7 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
     names(impact_sens)<-c('predict.bsts','inclusion_probs','post_period_response', 'observed.y' )
     sensitivity_analysis[[i]] <- list(removed_var = max_var, removed_prob = max_prob)
    # if (!is.null(mean) && !is.null(sd) && !is.null(eval_period) && !is.null(post_period)) {
-      quantiles <- rrPredQuantiles(impact = impact_sens, mean =outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)
+      quantiles <- rrPredQuantiles(impact = impact_sens,  eval_period = eval_period, post_period = post_period)
       sensitivity_analysis[[i]]$rr <- round(quantiles$rr,2)
       sensitivity_analysis[[i]]$pred <- quantiles$pred
   #  }
@@ -320,7 +328,7 @@ weightSensitivityAnalysis <- function(group, covars, ds, impact, time_points, in
 
 predSensitivityAnalysis <- function(group, ds, zoo_data, denom_name, outcome_mean, outcome_sd, intervention_date, eval_period, post_period, time_points, n_seasons , n_pred) {
   impact <- doCausalImpact(zoo_data[[group]], intervention_date, time_points, n_seasons, n_pred = n_pred)
-  quantiles <- lapply(group, FUN = function(group) {rrPredQuantiles(impact = impact, denom_data = ds[[group]][, denom_name], mean = outcome_mean[group], sd = outcome_sd[group], eval_period = eval_period, post_period = post_period)})
+  quantiles <- lapply(group, FUN = function(group) {rrPredQuantiles(impact = impact, denom_data = ds[[group]][, denom_name],  eval_period = eval_period, post_period = post_period)})
   rr_mean <- t(sapply(quantiles, getRR))
   return(rr_mean)
 }
