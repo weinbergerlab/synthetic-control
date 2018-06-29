@@ -117,7 +117,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 	  
 	  regression_prior_df <- 50
 	  exp_r2 <- 0.8
-	  prior1=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities =rep(1,13),prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
+	  prior1=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities =rep(1,(n_seasons+1)),prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
 		bsts_model <- lm.spike(y~x, prior=prior1 , niter = n_iter, ping = 0, seed = 1)	
 		
 			} else {
@@ -132,7 +132,7 @@ doCausalImpact <- function(zoo_data, intervention_date, time_points, n_seasons =
 			  
 			  if(denom>0){
 			  	prior.inclusion.probabilities = c( rep(1,n_seasons),  rep(n_pred/denom,denom) ) #force seasonality and intercept into model, repeat '1' 12 times, repeat inclusion prob by N of cnon-monthly covars
-			  } else {	prior.inclusion.probabilities = rep(1,12)   }
+			  } else {	prior.inclusion.probabilities = rep(1,n_seasons)   }
 			  prior.inclusion.probabilities[prior.inclusion.probabilities>1] <- 1
 			  prior2=SpikeSlabPrior(cbind(1,x), prior.inclusion.probabilities = prior.inclusion.probabilities,prior.df = regression_prior_df, expected.r2 = exp_r2, mean.y=mean(y, na.rm=TRUE), sdy=sd(y, na.rm = TRUE) )
 			  bsts_model <- lm.spike(y ~ x,  niter = n_iter, prior=prior2 , ping = 0, seed = 1 )
