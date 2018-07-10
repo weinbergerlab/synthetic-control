@@ -1,3 +1,7 @@
+
+##NOTE: UPDATED VERSION
+The code here is the same as that used for Bruhn et al. PNAS and uses the BoomSpikeSlab sampler for MCMC. However, it performs linear regression on the log-transformed counts, rather than Poisson, which might not be ideal for some count data, particularly sparse data. We have an updated version of the code here: https://github.com/weinbergerlab/synthetic-control-poisson that uses a Poisson model with overdispersion and also performs STL+PCA, which is ideal for sparse data (Shioda et al. Epidemiology) and performs K-fold cross validation and Bayesian stacking. 
+
 # Synthetic Control
 #GETTING STARTED:
 #Save all of the files to your desktop and open the synthetic_control_run.R file. Set the working directory as the "main analysis components" folder. To use the sample Brazil data (found in Datasets for PNAS), use all of the default settings, or specficy your data file. Change the dates as needed to set the training and evaluation periods.
