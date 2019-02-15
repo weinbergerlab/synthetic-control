@@ -1,4 +1,11 @@
 
+####################################################################
+#THIS REPOSITORY IS NO LONGER BEING MAINTAINED. PLEASE USE THE InterventionEvaluatR PACKAGE 
+https://github.com/weinbergerlab/InterventionEvaluatR
+#######################################################################
+
+
+
 ##NOTE: UPDATED VERSION
 The code here is the same as that used for Bruhn et al. PNAS and uses the BoomSpikeSlab sampler for MCMC. However, it performs linear regression on the log-transformed counts, rather than Poisson, which might not be ideal for some count data, particularly sparse data. We have an updated version of the code here: https://github.com/weinbergerlab/synthetic-control-poisson that uses a Poisson model with overdispersion and also performs STL+PCA, which is ideal for sparse data (Shioda et al. Epidemiology) and performs K-fold cross validation and Bayesian stacking. 
 
